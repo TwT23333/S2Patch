@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+
+# generated at run time
+datasets/*/outputs/
+datasets/*/results_output.json
+astbase/clusters/

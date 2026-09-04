@@ -1,0 +1,5012 @@
+code_before,code_after,CWE ID,trigger_path
+"static int  readSeparateTilesIntoBuffer (TIFF* in, uint8 *obuf, 
+					 uint32 imagelength, uint32 imagewidth, 
+                                         uint32 tw, uint32 tl,
+                                         uint16 spp, uint16 bps)
+  {
+  int     i, status = 1, sample;
+  int     shift_width, bytes_per_pixel;
+  uint16  bytes_per_sample;
+  uint32  row, col;     /* Current row and col of image */
+  uint32  nrow, ncol;   /* Number of rows and cols in current tile */
+  uint32  row_offset, col_offset; /* Output buffer offsets */
+  tsize_t tbytes = 0, tilesize = TIFFTileSize(in);
+  tsample_t s;
+  uint8*  bufp = (uint8*)obuf;
+  unsigned char *srcbuffs[MAX_SAMPLES];
+  unsigned char *tbuff = NULL;
+
+  bytes_per_sample = (bps + 7) / 8;
+
+  for (sample = 0; (sample < spp) && (sample < MAX_SAMPLES); sample++)
+    {
+    srcbuffs[sample] = NULL;
+    tbuff = (unsigned char *)_TIFFmalloc(tilesize + 8);
+    if (!tbuff)
+      {
+      TIFFError (""readSeparateTilesIntoBuffer"", 
+                 ""Unable to allocate tile read buffer for sample %d"", sample);
+      for (i = 0; i < sample; i++)
+        _TIFFfree (srcbuffs[i]);
+      return 0;
+      }
+    srcbuffs[sample] = tbuff;
+    } 
+  /* Each tile contains only the data for a single plane
+   * arranged in scanlines of tw * bytes_per_sample bytes.
+   */
+  for (row = 0; row < imagelength; row += tl)
+    {
+    nrow = (row + tl > imagelength) ? imagelength - row : tl;
+    for (col = 0; col < imagewidth; col += tw)
+      {
+      for (s = 0; s < spp; s++)
+        {  /* Read each plane of a tile set into srcbuffs[s] */
+	tbytes = TIFFReadTile(in, srcbuffs[s], col, row, 0, s);
+        if (tbytes < 0  && !ignore)
+          {
+	  TIFFError(TIFFFileName(in),
+                 ""Error, can't read tile for row %lu col %lu, ""
+		 ""sample %lu"",
+		 (unsigned long) col, (unsigned long) row,
+		 (unsigned long) s);
+		 status = 0;
+          for (sample = 0; (sample < spp) && (sample < MAX_SAMPLES); sample++)
+            {
+            tbuff = srcbuffs[sample];
+            if (tbuff != NULL)
+              _TIFFfree(tbuff);
+            }
+          return status;
+	  }
+	}
+     /* Tiles on the right edge may be padded out to tw 
+      * which must be a multiple of 16.
+      * Ncol represents the visible (non padding) portion.  
+      */
+      if (col + tw > imagewidth)
+        ncol = imagewidth - col;
+      else
+        ncol = tw;
+
+      row_offset = row * (((imagewidth * spp * bps) + 7) / 8);
+      col_offset = ((col * spp * bps) + 7) / 8;
+      bufp = obuf + row_offset + col_offset;
+
+      if ((bps % 8) == 0)
+        {
+        if (combineSeparateTileSamplesBytes(srcbuffs, bufp, ncol, nrow, imagewidth,
+					    tw, spp, bps, NULL, 0, 0))
+	  {
+          status = 0;
+          break;
+      	  }
+	}
+      else
+        {
+        bytes_per_pixel  = ((bps * spp) + 7) / 8;
+        if (bytes_per_pixel < (bytes_per_sample + 1))
+          shift_width = bytes_per_pixel;
+        else
+          shift_width = bytes_per_sample + 1;
+
+        switch (shift_width)
+          {
+          case 1: if (combineSeparateTileSamples8bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+      	            }
+	          break;
+          case 2: if (combineSeparateTileSamples16bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+		    }
+	          break;
+          case 3: if (combineSeparateTileSamples24bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+       	            }
+                  break;
+          case 4: 
+          case 5:
+          case 6:
+          case 7:
+          case 8: if (combineSeparateTileSamples32bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+		    }
+	          break;
+          default: TIFFError (""readSeparateTilesIntoBuffer"", ""Unsupported bit depth: %d"", bps);
+                  status = 0;
+                  break;
+          }
+        }
+      }
+    }
+
+  for (sample = 0; (sample < spp) && (sample < MAX_SAMPLES); sample++)
+    {
+    tbuff = srcbuffs[sample];
+    if (tbuff != NULL)
+      _TIFFfree(tbuff);
+    }
+ 
+  return status;
+  }
+","static int  readSeparateTilesIntoBuffer (TIFF* in, uint8 *obuf, 
+					 uint32 imagelength, uint32 imagewidth, 
+                                         uint32 tw, uint32 tl,
+                                         uint16 spp, uint16 bps)
+  {
+  int     i, status = 1, sample;
+  int     shift_width, bytes_per_pixel;
+  uint16  bytes_per_sample;
+  uint32  row, col;     /* Current row and col of image */
+  uint32  nrow, ncol;   /* Number of rows and cols in current tile */
+  uint32  row_offset, col_offset; /* Output buffer offsets */
+  tsize_t tbytes = 0, tilesize = TIFFTileSize(in);
+  tsample_t s;
+  uint8*  bufp = (uint8*)obuf;
+  unsigned char *srcbuffs[MAX_SAMPLES];
+  unsigned char *tbuff = NULL;
+
+  bytes_per_sample = (bps + 7) / 8;
+
+  for (sample = 0; (sample < spp) && (sample < MAX_SAMPLES); sample++)
+    {
+    srcbuffs[sample] = NULL;
+    tbuff = (unsigned char *)_TIFFmalloc(tilesize + 8);
+    if (!tbuff)
+      {
+      TIFFError (""readSeparateTilesIntoBuffer"", 
+                 ""Unable to allocate tile read buffer for sample %d"", sample);
+      for (i = 0; i < sample; i++)
+        _TIFFfree (srcbuffs[i]);
+      return 0;
+      }
+    srcbuffs[sample] = tbuff;
+    } 
+  /* Each tile contains only the data for a single plane
+   * arranged in scanlines of tw * bytes_per_sample bytes.
+   */
+  for (row = 0; row < imagelength; row += tl)
+    {
+    nrow = (row + tl > imagelength) ? imagelength - row : tl;
+    for (col = 0; col < imagewidth; col += tw)
+      {
+      for (s = 0; s < spp && s < MAX_SAMPLES; s++)
+        {  /* Read each plane of a tile set into srcbuffs[s] */
+	tbytes = TIFFReadTile(in, srcbuffs[s], col, row, 0, s);
+        if (tbytes < 0  && !ignore)
+          {
+	  TIFFError(TIFFFileName(in),
+                 ""Error, can't read tile for row %lu col %lu, ""
+		 ""sample %lu"",
+		 (unsigned long) col, (unsigned long) row,
+		 (unsigned long) s);
+		 status = 0;
+          for (sample = 0; (sample < spp) && (sample < MAX_SAMPLES); sample++)
+            {
+            tbuff = srcbuffs[sample];
+            if (tbuff != NULL)
+              _TIFFfree(tbuff);
+            }
+          return status;
+	  }
+	}
+     /* Tiles on the right edge may be padded out to tw 
+      * which must be a multiple of 16.
+      * Ncol represents the visible (non padding) portion.  
+      */
+      if (col + tw > imagewidth)
+        ncol = imagewidth - col;
+      else
+        ncol = tw;
+
+      row_offset = row * (((imagewidth * spp * bps) + 7) / 8);
+      col_offset = ((col * spp * bps) + 7) / 8;
+      bufp = obuf + row_offset + col_offset;
+
+      if ((bps % 8) == 0)
+        {
+        if (combineSeparateTileSamplesBytes(srcbuffs, bufp, ncol, nrow, imagewidth,
+					    tw, spp, bps, NULL, 0, 0))
+	  {
+          status = 0;
+          break;
+      	  }
+	}
+      else
+        {
+        bytes_per_pixel  = ((bps * spp) + 7) / 8;
+        if (bytes_per_pixel < (bytes_per_sample + 1))
+          shift_width = bytes_per_pixel;
+        else
+          shift_width = bytes_per_sample + 1;
+
+        switch (shift_width)
+          {
+          case 1: if (combineSeparateTileSamples8bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+      	            }
+	          break;
+          case 2: if (combineSeparateTileSamples16bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+		    }
+	          break;
+          case 3: if (combineSeparateTileSamples24bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+       	            }
+                  break;
+          case 4: 
+          case 5:
+          case 6:
+          case 7:
+          case 8: if (combineSeparateTileSamples32bits (srcbuffs, bufp, ncol, nrow,
+                                                       imagewidth, tw, spp, bps, 
+						       NULL, 0, 0))
+	            {
+                    status = 0;
+                    break;
+		    }
+	          break;
+          default: TIFFError (""readSeparateTilesIntoBuffer"", ""Unsupported bit depth: %d"", bps);
+                  status = 0;
+                  break;
+          }
+        }
+      }
+    }
+
+  for (sample = 0; (sample < spp) && (sample < MAX_SAMPLES); sample++)
+    {
+    tbuff = srcbuffs[sample];
+    if (tbuff != NULL)
+      _TIFFfree(tbuff);
+    }
+ 
+  return status;
+  }
+",CWE-125,"[42, 44]"
+"static int
+JPEGSetupEncode(TIFF* tif)
+{
+	JPEGState* sp = JState(tif);
+	TIFFDirectory *td = &tif->tif_dir;
+	static const char module[] = ""JPEGSetupEncode"";
+
+#if defined(JPEG_DUAL_MODE_8_12) && !defined(TIFFInitJPEG)
+        if( tif->tif_dir.td_bitspersample == 12 )
+            return TIFFReInitJPEG_12( tif, COMPRESSION_JPEG, 1 );
+#endif
+
+        JPEGInitializeLibJPEG( tif, FALSE );
+
+	assert(sp != NULL);
+	assert(!sp->cinfo.comm.is_decompressor);
+
+	sp->photometric = td->td_photometric;
+
+	/*
+	 * Initialize all JPEG parameters to default values.
+	 * Note that jpeg_set_defaults needs legal values for
+	 * in_color_space and input_components.
+	 */
+	if (td->td_planarconfig == PLANARCONFIG_CONTIG) {
+		sp->cinfo.c.input_components = td->td_samplesperpixel;
+		if (sp->photometric == PHOTOMETRIC_YCBCR) {
+			if (sp->jpegcolormode == JPEGCOLORMODE_RGB) {
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			} else {
+				sp->cinfo.c.in_color_space = JCS_YCbCr;
+			}
+		} else {
+			if ((td->td_photometric == PHOTOMETRIC_MINISWHITE || td->td_photometric == PHOTOMETRIC_MINISBLACK) && td->td_samplesperpixel == 1)
+				sp->cinfo.c.in_color_space = JCS_GRAYSCALE;
+			else if (td->td_photometric == PHOTOMETRIC_RGB && td->td_samplesperpixel == 3)
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			else if (td->td_photometric == PHOTOMETRIC_SEPARATED && td->td_samplesperpixel == 4)
+				sp->cinfo.c.in_color_space = JCS_CMYK;
+			else
+				sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+		}
+	} else {
+		sp->cinfo.c.input_components = 1;
+		sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+	}
+	if (!TIFFjpeg_set_defaults(sp))
+		return (0);
+	/* Set per-file parameters */
+	switch (sp->photometric) {
+	case PHOTOMETRIC_YCBCR:
+		sp->h_sampling = td->td_ycbcrsubsampling[0];
+		sp->v_sampling = td->td_ycbcrsubsampling[1];
+		/*
+		 * A ReferenceBlackWhite field *must* be present since the
+		 * default value is inappropriate for YCbCr.  Fill in the
+		 * proper value if application didn't set it.
+		 */
+		{
+			float *ref;
+			if (!TIFFGetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					  &ref)) {
+				float refbw[6];
+				long top = 1L << td->td_bitspersample;
+				refbw[0] = 0;
+				refbw[1] = (float)(top-1L);
+				refbw[2] = (float)(top>>1);
+				refbw[3] = refbw[1];
+				refbw[4] = refbw[2];
+				refbw[5] = refbw[1];
+				TIFFSetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					     refbw);
+			}
+		}
+		break;
+	case PHOTOMETRIC_PALETTE:		/* disallowed by Tech Note */
+	case PHOTOMETRIC_MASK:
+		TIFFErrorExt(tif->tif_clientdata, module,
+			  ""PhotometricInterpretation %d not allowed for JPEG"",
+			  (int) sp->photometric);
+		return (0);
+	default:
+		/* TIFF 6.0 forbids subsampling of all other color spaces */
+		sp->h_sampling = 1;
+		sp->v_sampling = 1;
+		break;
+	}
+
+	/* Verify miscellaneous parameters */
+
+	/*
+	 * This would need work if libtiff ever supports different
+	 * depths for different components, or if libjpeg ever supports
+	 * run-time selection of depth.  Neither is imminent.
+	 */
+#ifdef JPEG_LIB_MK1
+        /* BITS_IN_JSAMPLE now permits 8 and 12 --- dgilbert */
+	if (td->td_bitspersample != 8 && td->td_bitspersample != 12) 
+#else
+	if (td->td_bitspersample != BITS_IN_JSAMPLE )
+#endif
+	{
+		TIFFErrorExt(tif->tif_clientdata, module, ""BitsPerSample %d not allowed for JPEG"",
+			  (int) td->td_bitspersample);
+		return (0);
+	}
+	sp->cinfo.c.data_precision = td->td_bitspersample;
+#ifdef JPEG_LIB_MK1
+        sp->cinfo.c.bits_in_jsample = td->td_bitspersample;
+#endif
+	if (isTiled(tif)) {
+		if ((td->td_tilelength % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile height must be multiple of %d"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+		if ((td->td_tilewidth % (sp->h_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile width must be multiple of %d"",
+				  sp->h_sampling * DCTSIZE);
+			return (0);
+		}
+	} else {
+		if (td->td_rowsperstrip < td->td_imagelength &&
+		    (td->td_rowsperstrip % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""RowsPerStrip must be multiple of %d for JPEG"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+	}
+
+	/* Create a JPEGTables field if appropriate */
+	if (sp->jpegtablesmode & (JPEGTABLESMODE_QUANT|JPEGTABLESMODE_HUFF)) {
+                if( sp->jpegtables == NULL
+                    || memcmp(sp->jpegtables,""\0\0\0\0\0\0\0\0\0"",8) == 0 )
+                {
+                        if (!prepare_JPEGTables(tif))
+                                return (0);
+                        /* Mark the field present */
+                        /* Can't use TIFFSetField since BEENWRITING is already set! */
+                        tif->tif_flags |= TIFF_DIRTYDIRECT;
+                        TIFFSetFieldBit(tif, FIELD_JPEGTABLES);
+                }
+	} else {
+		/* We do not support application-supplied JPEGTables, */
+		/* so mark the field not present */
+		TIFFClrFieldBit(tif, FIELD_JPEGTABLES);
+	}
+
+	/* Direct libjpeg output to libtiff's output buffer */
+	TIFFjpeg_data_dest(sp, tif);
+
+	return (1);
+}
+","static int
+JPEGSetupEncode(TIFF* tif)
+{
+	JPEGState* sp = JState(tif);
+	TIFFDirectory *td = &tif->tif_dir;
+	static const char module[] = ""JPEGSetupEncode"";
+
+#if defined(JPEG_DUAL_MODE_8_12) && !defined(TIFFInitJPEG)
+        if( tif->tif_dir.td_bitspersample == 12 )
+            return TIFFReInitJPEG_12( tif, COMPRESSION_JPEG, 1 );
+#endif
+
+        JPEGInitializeLibJPEG( tif, FALSE );
+
+	assert(sp != NULL);
+	assert(!sp->cinfo.comm.is_decompressor);
+
+	sp->photometric = td->td_photometric;
+
+	/*
+	 * Initialize all JPEG parameters to default values.
+	 * Note that jpeg_set_defaults needs legal values for
+	 * in_color_space and input_components.
+	 */
+	if (td->td_planarconfig == PLANARCONFIG_CONTIG) {
+		sp->cinfo.c.input_components = td->td_samplesperpixel;
+		if (sp->photometric == PHOTOMETRIC_YCBCR) {
+			if (sp->jpegcolormode == JPEGCOLORMODE_RGB) {
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			} else {
+				sp->cinfo.c.in_color_space = JCS_YCbCr;
+			}
+		} else {
+			if ((td->td_photometric == PHOTOMETRIC_MINISWHITE || td->td_photometric == PHOTOMETRIC_MINISBLACK) && td->td_samplesperpixel == 1)
+				sp->cinfo.c.in_color_space = JCS_GRAYSCALE;
+			else if (td->td_photometric == PHOTOMETRIC_RGB && td->td_samplesperpixel == 3)
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			else if (td->td_photometric == PHOTOMETRIC_SEPARATED && td->td_samplesperpixel == 4)
+				sp->cinfo.c.in_color_space = JCS_CMYK;
+			else
+				sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+		}
+	} else {
+		sp->cinfo.c.input_components = 1;
+		sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+	}
+	if (!TIFFjpeg_set_defaults(sp))
+		return (0);
+	/* Set per-file parameters */
+	switch (sp->photometric) {
+	case PHOTOMETRIC_YCBCR:
+		sp->h_sampling = td->td_ycbcrsubsampling[0];
+		sp->v_sampling = td->td_ycbcrsubsampling[1];
+		if( sp->h_sampling == 0 || sp->v_sampling == 0 )
+                {
+                    TIFFErrorExt(tif->tif_clientdata, module,
+                            ""Invalig horizontal/vertical sampling value"");
+                    return (0);
+		}
+		/*
+		 * A ReferenceBlackWhite field *must* be present since the
+		 * default value is inappropriate for YCbCr.  Fill in the
+		 * proper value if application didn't set it.
+		 */
+		{
+			float *ref;
+			if (!TIFFGetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					  &ref)) {
+				float refbw[6];
+				long top = 1L << td->td_bitspersample;
+				refbw[0] = 0;
+				refbw[1] = (float)(top-1L);
+				refbw[2] = (float)(top>>1);
+				refbw[3] = refbw[1];
+				refbw[4] = refbw[2];
+				refbw[5] = refbw[1];
+				TIFFSetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					     refbw);
+			}
+		}
+		break;
+	case PHOTOMETRIC_PALETTE:		/* disallowed by Tech Note */
+	case PHOTOMETRIC_MASK:
+		TIFFErrorExt(tif->tif_clientdata, module,
+			  ""PhotometricInterpretation %d not allowed for JPEG"",
+			  (int) sp->photometric);
+		return (0);
+	default:
+		/* TIFF 6.0 forbids subsampling of all other color spaces */
+		sp->h_sampling = 1;
+		sp->v_sampling = 1;
+		break;
+	}
+
+	/* Verify miscellaneous parameters */
+
+	/*
+	 * This would need work if libtiff ever supports different
+	 * depths for different components, or if libjpeg ever supports
+	 * run-time selection of depth.  Neither is imminent.
+	 */
+#ifdef JPEG_LIB_MK1
+        /* BITS_IN_JSAMPLE now permits 8 and 12 --- dgilbert */
+	if (td->td_bitspersample != 8 && td->td_bitspersample != 12) 
+#else
+	if (td->td_bitspersample != BITS_IN_JSAMPLE )
+#endif
+	{
+		TIFFErrorExt(tif->tif_clientdata, module, ""BitsPerSample %d not allowed for JPEG"",
+			  (int) td->td_bitspersample);
+		return (0);
+	}
+	sp->cinfo.c.data_precision = td->td_bitspersample;
+#ifdef JPEG_LIB_MK1
+        sp->cinfo.c.bits_in_jsample = td->td_bitspersample;
+#endif
+	if (isTiled(tif)) {
+		if ((td->td_tilelength % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile height must be multiple of %d"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+		if ((td->td_tilewidth % (sp->h_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile width must be multiple of %d"",
+				  sp->h_sampling * DCTSIZE);
+			return (0);
+		}
+	} else {
+		if (td->td_rowsperstrip < td->td_imagelength &&
+		    (td->td_rowsperstrip % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""RowsPerStrip must be multiple of %d for JPEG"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+	}
+
+	/* Create a JPEGTables field if appropriate */
+	if (sp->jpegtablesmode & (JPEGTABLESMODE_QUANT|JPEGTABLESMODE_HUFF)) {
+                if( sp->jpegtables == NULL
+                    || memcmp(sp->jpegtables,""\0\0\0\0\0\0\0\0\0"",8) == 0 )
+                {
+                        if (!prepare_JPEGTables(tif))
+                                return (0);
+                        /* Mark the field present */
+                        /* Can't use TIFFSetField since BEENWRITING is already set! */
+                        tif->tif_flags |= TIFF_DIRTYDIRECT;
+                        TIFFSetFieldBit(tif, FIELD_JPEGTABLES);
+                }
+	} else {
+		/* We do not support application-supplied JPEGTables, */
+		/* so mark the field not present */
+		TIFFClrFieldBit(tif, FIELD_JPEGTABLES);
+	}
+
+	/* Direct libjpeg output to libtiff's output buffer */
+	TIFFjpeg_data_dest(sp, tif);
+
+	return (1);
+}
+",CWE-190,"[5, 52, 53, 112, 118, 126]"
+"static void
+xmlDumpElementContent(xmlBufferPtr buf, xmlElementContentPtr content, int glob) {
+    if (content == NULL) return;
+
+    if (glob) xmlBufferWriteChar(buf, ""("");
+    switch (content->type) {
+        case XML_ELEMENT_CONTENT_PCDATA:
+            xmlBufferWriteChar(buf, ""#PCDATA"");
+	    break;
+	case XML_ELEMENT_CONTENT_ELEMENT:
+	    if (content->prefix != NULL) {
+		xmlBufferWriteCHAR(buf, content->prefix);
+		xmlBufferWriteChar(buf, "":"");
+	    }
+	    xmlBufferWriteCHAR(buf, content->name);
+	    break;
+	case XML_ELEMENT_CONTENT_SEQ:
+	    if ((content->c1->type == XML_ELEMENT_CONTENT_OR) ||
+	        (content->c1->type == XML_ELEMENT_CONTENT_SEQ))
+		xmlDumpElementContent(buf, content->c1, 1);
+	    else
+		xmlDumpElementContent(buf, content->c1, 0);
+            xmlBufferWriteChar(buf, "" , "");
+	    if (((content->c2->type == XML_ELEMENT_CONTENT_OR) ||
+	        ((content->c2->type == XML_ELEMENT_CONTENT_SEQ) &&
+		 (content->c2->ocur != XML_ELEMENT_CONTENT_ONCE))))
+		xmlDumpElementContent(buf, content->c2, 1);
+	    else
+		xmlDumpElementContent(buf, content->c2, 0);
+	    break;
+	case XML_ELEMENT_CONTENT_OR:
+	    if ((content->c1->type == XML_ELEMENT_CONTENT_OR) ||
+	        (content->c1->type == XML_ELEMENT_CONTENT_SEQ))
+		xmlDumpElementContent(buf, content->c1, 1);
+	    else
+		xmlDumpElementContent(buf, content->c1, 0);
+            xmlBufferWriteChar(buf, "" | "");
+	    if ((content->c2->type == XML_ELEMENT_CONTENT_SEQ) ||
+	        ((content->c2->type == XML_ELEMENT_CONTENT_OR) &&
+		 (content->c2->ocur != XML_ELEMENT_CONTENT_ONCE)))
+		xmlDumpElementContent(buf, content->c2, 1);
+	    else
+		xmlDumpElementContent(buf, content->c2, 0);
+	    break;
+	default:
+	    xmlErrValid(NULL, XML_ERR_INTERNAL_ERROR,
+		    ""Internal: ELEMENT content corrupted invalid type\n"",
+		    NULL);
+    }
+    if (glob)
+        xmlBufferWriteChar(buf, "")"");
+    switch (content->ocur) {
+        case XML_ELEMENT_CONTENT_ONCE:
+	    break;
+        case XML_ELEMENT_CONTENT_OPT:
+	    xmlBufferWriteChar(buf, ""?"");
+	    break;
+        case XML_ELEMENT_CONTENT_MULT:
+	    xmlBufferWriteChar(buf, ""*"");
+	    break;
+        case XML_ELEMENT_CONTENT_PLUS:
+	    xmlBufferWriteChar(buf, ""+"");
+	    break;
+    }
+}
+","static void
+xmlDumpElementContent(xmlBufferPtr buf, xmlElementContentPtr content, int glob) {
+    if (content == NULL) return;
+
+    if (glob) xmlBufferWriteChar(buf, ""("");
+    switch (content->type) {
+        case XML_ELEMENT_CONTENT_PCDATA:
+            xmlBufferWriteChar(buf, ""#PCDATA"");
+	    break;
+	case XML_ELEMENT_CONTENT_ELEMENT:
+	    if (content->prefix != NULL) {
+		xmlBufferWriteCHAR(buf, content->prefix);
+		xmlBufferWriteChar(buf, "":"");
+	    }
+	    xmlBufferWriteCHAR(buf, content->name);
+	    break;
+	case XML_ELEMENT_CONTENT_SEQ:
+		if ((content->c1 != NULL) &&
+               ((content->c1->type == XML_ELEMENT_CONTENT_OR) ||
+                (content->c1->type == XML_ELEMENT_CONTENT_SEQ)))
+		xmlDumpElementContent(buf, content->c1, 1);
+	    else
+		xmlDumpElementContent(buf, content->c1, 0);
+            xmlBufferWriteChar(buf, "" , "");
+		if ((content->c2 != NULL) &&
+               ((content->c2->type == XML_ELEMENT_CONTENT_OR) ||
+                ((content->c2->type == XML_ELEMENT_CONTENT_SEQ) &&
+                 (content->c2->ocur != XML_ELEMENT_CONTENT_ONCE))))	
+		    xmlDumpElementContent(buf, content->c2, 1);
+	    else
+		xmlDumpElementContent(buf, content->c2, 0);
+	    break;
+	case XML_ELEMENT_CONTENT_OR:
+	    if ((content->c1->type == XML_ELEMENT_CONTENT_OR) ||
+	        (content->c1->type == XML_ELEMENT_CONTENT_SEQ))
+		xmlDumpElementContent(buf, content->c1, 1);
+	    else
+		xmlDumpElementContent(buf, content->c1, 0);
+            xmlBufferWriteChar(buf, "" | "");
+	    if ((content->c2->type == XML_ELEMENT_CONTENT_SEQ) ||
+	        ((content->c2->type == XML_ELEMENT_CONTENT_OR) &&
+		 (content->c2->ocur != XML_ELEMENT_CONTENT_ONCE)))
+		xmlDumpElementContent(buf, content->c2, 1);
+	    else
+		xmlDumpElementContent(buf, content->c2, 0);
+	    break;
+	default:
+	    xmlErrValid(NULL, XML_ERR_INTERNAL_ERROR,
+		    ""Internal: ELEMENT content corrupted invalid type\n"",
+		    NULL);
+    }
+    if (glob)
+        xmlBufferWriteChar(buf, "")"");
+    switch (content->ocur) {
+        case XML_ELEMENT_CONTENT_ONCE:
+	    break;
+        case XML_ELEMENT_CONTENT_OPT:
+	    xmlBufferWriteChar(buf, ""?"");
+	    break;
+        case XML_ELEMENT_CONTENT_MULT:
+	    xmlBufferWriteChar(buf, ""*"");
+	    break;
+        case XML_ELEMENT_CONTENT_PLUS:
+	    xmlBufferWriteChar(buf, ""+"");
+	    break;
+    }
+}
+",CWE-476,"[18, 24]"
+"static void
+xmlParseEndTag2(xmlParserCtxtPtr ctxt, const xmlChar *prefix,
+                const xmlChar *URI, int line, int nsNr, int tlen) {
+    const xmlChar *name;
+
+    GROW;
+    if ((RAW != '<') || (NXT(1) != '/')) {
+	xmlFatalErr(ctxt, XML_ERR_LTSLASH_REQUIRED, NULL);
+	return;
+    }
+    SKIP(2);
+
+    if ((tlen > 0) && (xmlStrncmp(ctxt->input->cur, ctxt->name, tlen) == 0)) {
+        if (ctxt->input->cur[tlen] == '>') {
+	    ctxt->input->cur += tlen + 1;
+	    ctxt->input->col += tlen + 1;
+	    goto done;
+	}
+	ctxt->input->cur += tlen;
+	ctxt->input->col += tlen;
+	name = (xmlChar*)1;
+    } else {
+	if (prefix == NULL)
+	    name = xmlParseNameAndCompare(ctxt, ctxt->name);
+	else
+	    name = xmlParseQNameAndCompare(ctxt, ctxt->name, prefix);
+    }
+
+    /*
+     * We should definitely be at the ending ""S? '>'"" part
+     */
+    GROW;
+    if (ctxt->instate == XML_PARSER_EOF)
+        return;
+    SKIP_BLANKS;
+    if ((!IS_BYTE_CHAR(RAW)) || (RAW != '>')) {
+	xmlFatalErr(ctxt, XML_ERR_GT_REQUIRED, NULL);
+    } else
+	NEXT1;
+
+    /*
+     * [ WFC: Element Type Match ]
+     * The Name in an element's end-tag must match the element type in the
+     * start-tag.
+     *
+     */
+    if (name != (xmlChar*)1) {
+        if (name == NULL) name = BAD_CAST ""unparseable"";
+        if ((line == 0) && (ctxt->node != NULL))
+            line = ctxt->node->line;
+        xmlFatalErrMsgStrIntStr(ctxt, XML_ERR_TAG_NAME_MISMATCH,
+		     ""Opening and ending tag mismatch: %s line %d and %s\n"",
+		                ctxt->name, line, name);
+    }
+
+    /*
+     * SAX: End of Tag
+     */
+done:
+    if ((ctxt->sax != NULL) && (ctxt->sax->endElementNs != NULL) &&
+	(!ctxt->disableSAX))
+	ctxt->sax->endElementNs(ctxt->userData, ctxt->name, prefix, URI);
+
+    spacePop(ctxt);
+    if (nsNr != 0)
+	nsPop(ctxt, nsNr);
+    return;
+}
+","static void
+xmlParseEndTag2(xmlParserCtxtPtr ctxt, const xmlChar *prefix,
+                const xmlChar *URI, int line, int nsNr, int tlen) {
+    const xmlChar *name;
+
+    GROW;
+    if ((RAW != '<') || (NXT(1) != '/')) {
+	xmlFatalErr(ctxt, XML_ERR_LTSLASH_REQUIRED, NULL);
+	return;
+    }
+    SKIP(2);
+    curLength = ctxt->input->end - ctxt->input->cur;
+    if ((tlen > 0) && (curLength >= (size_t)tlen) &&
+        (xmlStrncmp(ctxt->input->cur, ctxt->name, tlen) == 0)) {
+        if ((curLength >= (size_t)(tlen + 1)) &&
+           (ctxt->input->cur[tlen] == '>')) {
+	    ctxt->input->cur += tlen + 1;
+	    ctxt->input->col += tlen + 1;
+	    goto done;
+	}
+	ctxt->input->cur += tlen;
+	ctxt->input->col += tlen;
+	name = (xmlChar*)1;
+    } else {
+	if (prefix == NULL)
+	    name = xmlParseNameAndCompare(ctxt, ctxt->name);
+	else
+	    name = xmlParseQNameAndCompare(ctxt, ctxt->name, prefix);
+    }
+
+    /*
+     * We should definitely be at the ending ""S? '>'"" part
+     */
+    GROW;
+    if (ctxt->instate == XML_PARSER_EOF)
+        return;
+    SKIP_BLANKS;
+    if ((!IS_BYTE_CHAR(RAW)) || (RAW != '>')) {
+	xmlFatalErr(ctxt, XML_ERR_GT_REQUIRED, NULL);
+    } else
+	NEXT1;
+
+    /*
+     * [ WFC: Element Type Match ]
+     * The Name in an element's end-tag must match the element type in the
+     * start-tag.
+     *
+     */
+    if (name != (xmlChar*)1) {
+        if (name == NULL) name = BAD_CAST ""unparseable"";
+        if ((line == 0) && (ctxt->node != NULL))
+            line = ctxt->node->line;
+        xmlFatalErrMsgStrIntStr(ctxt, XML_ERR_TAG_NAME_MISMATCH,
+		     ""Opening and ending tag mismatch: %s line %d and %s\n"",
+		                ctxt->name, line, name);
+    }
+
+    /*
+     * SAX: End of Tag
+     */
+done:
+    if ((ctxt->sax != NULL) && (ctxt->sax->endElementNs != NULL) &&
+	(!ctxt->disableSAX))
+	ctxt->sax->endElementNs(ctxt->userData, ctxt->name, prefix, URI);
+
+    spacePop(ctxt);
+    if (nsNr != 0)
+	nsPop(ctxt, nsNr);
+    return;
+}
+",CWE-125,"[2, 3, 13]"
+"get_8bit_row (j_compress_ptr cinfo, cjpeg_source_ptr sinfo)
+/* This version is for reading 8-bit colormap indexes */
+{
+  bmp_source_ptr source = (bmp_source_ptr) sinfo;
+  register JSAMPARRAY colormap = source->colormap;
+  JSAMPARRAY image_ptr;
+  register int t;
+  register JSAMPROW inptr, outptr;
+  register JDIMENSION col;
+  int cmaplen=0;
+  /* Fetch next row from virtual array */
+  source->source_row--;
+  image_ptr = (*cinfo->mem->access_virt_sarray)
+    ((j_common_ptr) cinfo, source->whole_image,
+     source->source_row, (JDIMENSION) 1, FALSE);
+
+  /* Expand the colormap indexes to real data */
+  inptr = image_ptr[0];
+  outptr = source->pub.buffer[0];
+  for (col = cinfo->image_width; col > 0; col--) {
+    t = GETJSAMPLE(*inptr++);
+    *outptr++ = colormap[0][t]; /* colormap[x] has size cmaplen */
+    *outptr++ = colormap[1][t]; /* colormap[x] has size cmaplen */
+    *outptr++ = colormap[2][t]; /* colormap[x] has size cmaplen */
+  }
+
+  return 1;
+}
+","get_8bit_row (j_compress_ptr cinfo, cjpeg_source_ptr sinfo)
+/* This version is for reading 8-bit colormap indexes */
+{
+  bmp_source_ptr source = (bmp_source_ptr) sinfo;
+  register JSAMPARRAY colormap = source->colormap;
+  JSAMPARRAY image_ptr;
+  register int t;
+  register JSAMPROW inptr, outptr;
+  register JDIMENSION col;
+  int cmaplen=0;
+  /* Fetch next row from virtual array */
+  source->source_row--;
+  image_ptr = (*cinfo->mem->access_virt_sarray)
+    ((j_common_ptr) cinfo, source->whole_image,
+     source->source_row, (JDIMENSION) 1, FALSE);
+
+  /* Expand the colormap indexes to real data */
+  inptr = image_ptr[0];
+  outptr = source->pub.buffer[0];
+  for (col = cinfo->image_width; col > 0; col--) {
+    t = GETJSAMPLE(*inptr++);
+    if (t >= cmaplen)
+      ERREXIT(cinfo, JERR_BMP_OUTOFRANGE);
+    *outptr++ = colormap[0][t]; /* colormap[x] has size cmaplen */
+    *outptr++ = colormap[1][t]; /* colormap[x] has size cmaplen */
+    *outptr++ = colormap[2][t]; /* colormap[x] has size cmaplen */
+  }
+
+  return 1;
+}
+",CWE-125,"[21, 22, 23, 24]"
+"		if(t2p->tiff_compression == COMPRESSION_JPEG){
+			unsigned char table_end[2];
+			uint32 count = 0;
+			buffer= (unsigned char*) _TIFFmalloc(t2p->tiff_datasize); // t2p->tiff_datasize is 2 in this case.
+			if(buffer==NULL){
+				TIFFError(TIFF2PDF_MODULE, 
+					""Can't allocate "" TIFF_SIZE_FORMAT "" bytes of memory ""
+                                        ""for t2p_readwrite_pdf_image_tile, %s"", 
+                                          (TIFF_SIZE_T) t2p->tiff_datasize, 
+					TIFFFileName(input));
+				t2p->t2p_error = T2P_ERR_ERROR;
+				return(0);
+			}
+			if(TIFFGetField(input, TIFFTAG_JPEGTABLES, &count, &jpt) != 0) {
+				if (count >= 4) {
+                                        int retTIFFReadRawTile; 
+                    /* Ignore EOI marker of JpegTables */
+					_TIFFmemcpy(buffer, jpt, count - 2);
+					bufferoffset += count - 2;
+                    /* Store last 2 bytes of the JpegTables */
+					table_end[0] = buffer[bufferoffset-2];
+					table_end[1] = buffer[bufferoffset-1];
+					xuint32 = bufferoffset;
+                                        bufferoffset -= 2;
+                                        retTIFFReadRawTile= TIFFReadRawTile(
+						input, 
+						tile, 
+						(tdata_t) &(((unsigned char*)buffer)[bufferoffset]), 
+						-1);
+                                        if( retTIFFReadRawTile < 0 )
+                                        {
+                                            _TIFFfree(buffer);
+                                            t2p->t2p_error = T2P_ERR_ERROR;
+                                            return(0);
+                                        }
+					bufferoffset += retTIFFReadRawTile;
+                    /* Overwrite SOI marker of image scan with previously */
+                    /* saved end of JpegTables */
+					buffer[xuint32-2]=table_end[0];
+					buffer[xuint32-1]=table_end[1];
+				}
+			}
+			t2pWriteFile(output, (tdata_t) buffer, bufferoffset);
+			_TIFFfree(buffer);
+			return(bufferoffset);
+		}
+","		if(t2p->tiff_compression == COMPRESSION_JPEG){
+			unsigned char table_end[2];
+			uint32 count = 0;
+			buffer= (unsigned char*) _TIFFmalloc(t2p->tiff_datasize); // t2p->tiff_datasize is 2 in this case.
+			if(buffer==NULL){
+				TIFFError(TIFF2PDF_MODULE, 
+					""Can't allocate "" TIFF_SIZE_FORMAT "" bytes of memory ""
+                                        ""for t2p_readwrite_pdf_image_tile, %s"", 
+                                          (TIFF_SIZE_T) t2p->tiff_datasize, 
+					TIFFFileName(input));
+				t2p->t2p_error = T2P_ERR_ERROR;
+				return(0);
+			}
+			if(TIFFGetField(input, TIFFTAG_JPEGTABLES, &count, &jpt) != 0) {
+				if (count > 4) {
+                                        int retTIFFReadRawTile; 
+                    /* Ignore EOI marker of JpegTables */
+					_TIFFmemcpy(buffer, jpt, count - 2);
+					bufferoffset += count - 2;
+                    /* Store last 2 bytes of the JpegTables */
+					table_end[0] = buffer[bufferoffset-2];
+					table_end[1] = buffer[bufferoffset-1];
+					xuint32 = bufferoffset;
+                                        bufferoffset -= 2;
+                                        retTIFFReadRawTile= TIFFReadRawTile(
+						input, 
+						tile, 
+						(tdata_t) &(((unsigned char*)buffer)[bufferoffset]), 
+						-1);
+                                        if( retTIFFReadRawTile < 0 )
+                                        {
+                                            _TIFFfree(buffer);
+                                            t2p->t2p_error = T2P_ERR_ERROR;
+                                            return(0);
+                                        }
+					bufferoffset += retTIFFReadRawTile;
+                    /* Overwrite SOI marker of image scan with previously */
+                    /* saved end of JpegTables */
+					buffer[xuint32-2]=table_end[0];
+					buffer[xuint32-1]=table_end[1];
+				}
+			}
+			t2pWriteFile(output, (tdata_t) buffer, bufferoffset);
+			_TIFFfree(buffer);
+			return(bufferoffset);
+		}
+",CWE-787,['?']
+"static int jpc_dec_process_siz(jpc_dec_t *dec, jpc_ms_t *ms)
+{
+	jpc_siz_t *siz = &ms->parms.siz;
+	int compno;
+	int tileno;
+	jpc_dec_tile_t *tile;
+	jpc_dec_tcomp_t *tcomp;
+	int htileno;
+	int vtileno;
+	jpc_dec_cmpt_t *cmpt;
+
+	dec->xstart = siz->xoff;
+	dec->ystart = siz->yoff;
+	dec->xend = siz->width;
+	dec->yend = siz->height;
+	dec->tilewidth = siz->tilewidth;
+	dec->tileheight = siz->tileheight;
+	dec->tilexoff = siz->tilexoff;
+	dec->tileyoff = siz->tileyoff;
+	dec->numcomps = siz->numcomps;
+	if (!(dec->cp = jpc_dec_cp_create(dec->numcomps))) {
+		return -1;
+	}
+
+	if (!(dec->cmpts = jas_alloc2(dec->numcomps, sizeof(jpc_dec_cmpt_t)))) {
+		return -1;
+	}
+
+	for (compno = 0, cmpt = dec->cmpts; compno < dec->numcomps; ++compno,
+	  ++cmpt) {
+		cmpt->prec = siz->comps[compno].prec;
+		cmpt->sgnd = siz->comps[compno].sgnd;
+		cmpt->hstep = siz->comps[compno].hsamp;
+		cmpt->vstep = siz->comps[compno].vsamp;
+		cmpt->width = JPC_CEILDIV(dec->xend, cmpt->hstep) -
+		  JPC_CEILDIV(dec->xstart, cmpt->hstep);
+		cmpt->height = JPC_CEILDIV(dec->yend, cmpt->vstep) -
+		  JPC_CEILDIV(dec->ystart, cmpt->vstep);
+		cmpt->hsubstep = 0;
+		cmpt->vsubstep = 0;
+	}
+
+	dec->image = 0;
+
+	dec->numhtiles = JPC_CEILDIV(dec->xend - dec->tilexoff, dec->tilewidth);
+	dec->numvtiles = JPC_CEILDIV(dec->yend - dec->tileyoff, dec->tileheight);
+	dec->numtiles = dec->numhtiles * dec->numvtiles;
+	JAS_DBGLOG(10, (""numtiles = %d; numhtiles = %d; numvtiles = %d;\n"",
+	  dec->numtiles, dec->numhtiles, dec->numvtiles));
+	if (!(dec->tiles = jas_alloc2(dec->numtiles, sizeof(jpc_dec_tile_t)))) {
+		return -1;
+	}
+
+	for (tileno = 0, tile = dec->tiles; tileno < dec->numtiles; ++tileno,
+	  ++tile) {
+		htileno = tileno % dec->numhtiles;
+		vtileno = tileno / dec->numhtiles;
+		tile->realmode = 0;
+		tile->state = JPC_TILE_INIT;
+		tile->xstart = JAS_MAX(dec->tilexoff + htileno * dec->tilewidth,
+		  dec->xstart);
+		tile->ystart = JAS_MAX(dec->tileyoff + vtileno * dec->tileheight,
+		  dec->ystart);
+		tile->xend = JAS_MIN(dec->tilexoff + (htileno + 1) *
+		  dec->tilewidth, dec->xend);
+		tile->yend = JAS_MIN(dec->tileyoff + (vtileno + 1) *
+		  dec->tileheight, dec->yend);
+		tile->numparts = 0;
+		tile->partno = 0;
+		tile->pkthdrstream = 0;
+		tile->pkthdrstreampos = 0;
+		tile->pptstab = 0;
+		tile->cp = 0;
+		tile->pi = 0;
+		if (!(tile->tcomps = jas_alloc2(dec->numcomps,
+		  sizeof(jpc_dec_tcomp_t)))) {
+			return -1;
+		}
+		for (compno = 0, cmpt = dec->cmpts, tcomp = tile->tcomps;
+		  compno < dec->numcomps; ++compno, ++cmpt, ++tcomp) {
+			tcomp->rlvls = 0;
+			tcomp->numrlvls = 0;
+			tcomp->data = 0;
+			tcomp->xstart = JPC_CEILDIV(tile->xstart, cmpt->hstep);
+			tcomp->ystart = JPC_CEILDIV(tile->ystart, cmpt->vstep);
+			tcomp->xend = JPC_CEILDIV(tile->xend, cmpt->hstep);
+			tcomp->yend = JPC_CEILDIV(tile->yend, cmpt->vstep);
+			tcomp->tsfb = 0;
+		}
+	}
+
+	dec->pkthdrstreams = 0;
+
+	/* We should expect to encounter other main header marker segments
+	  or an SOT marker segment next. */
+	dec->state = JPC_MH;
+
+	return 0;
+}
+","static int jpc_dec_process_siz(jpc_dec_t *dec, jpc_ms_t *ms)
+{
+	jpc_siz_t *siz = &ms->parms.siz;
+	int compno;
+	int tileno;
+	jpc_dec_tile_t *tile;
+	jpc_dec_tcomp_t *tcomp;
+	int htileno;
+	int vtileno;
+	jpc_dec_cmpt_t *cmpt;
+
+	dec->xstart = siz->xoff;
+	dec->ystart = siz->yoff;
+	dec->xend = siz->width;
+	dec->yend = siz->height;
+	dec->tilewidth = siz->tilewidth;
+	dec->tileheight = siz->tileheight;
+	dec->tilexoff = siz->tilexoff;
+	dec->tileyoff = siz->tileyoff;
+	dec->numcomps = siz->numcomps;
+	if (!(dec->cp = jpc_dec_cp_create(dec->numcomps))) {
+		return -1;
+	}
+
+	if (!(dec->cmpts = jas_alloc2(dec->numcomps, sizeof(jpc_dec_cmpt_t)))) {
+		return -1;
+	}
+
+	for (compno = 0, cmpt = dec->cmpts; compno < dec->numcomps; ++compno,
+	  ++cmpt) {
+		cmpt->prec = siz->comps[compno].prec;
+		cmpt->sgnd = siz->comps[compno].sgnd;
+		cmpt->hstep = siz->comps[compno].hsamp;
+		cmpt->vstep = siz->comps[compno].vsamp;
+		cmpt->width = JPC_CEILDIV(dec->xend, cmpt->hstep) -
+		  JPC_CEILDIV(dec->xstart, cmpt->hstep);
+		cmpt->height = JPC_CEILDIV(dec->yend, cmpt->vstep) -
+		  JPC_CEILDIV(dec->ystart, cmpt->vstep);
+		cmpt->hsubstep = 0;
+		cmpt->vsubstep = 0;
+	}
+
+	dec->image = 0;
+
+	dec->numhtiles = JPC_CEILDIV(dec->xend - dec->tilexoff, dec->tilewidth);
+	dec->numvtiles = JPC_CEILDIV(dec->yend - dec->tileyoff, dec->tileheight);
+	if (!jas_safe_size_mul(dec->numhtiles, dec->numvtiles, &size)) {
+               return -1;
+        }
+       dec->numtiles = size;
+	JAS_DBGLOG(10, (""numtiles = %d; numhtiles = %d; numvtiles = %d;\n"",
+	  dec->numtiles, dec->numhtiles, dec->numvtiles));
+	if (!(dec->tiles = jas_alloc2(dec->numtiles, sizeof(jpc_dec_tile_t)))) {
+		return -1;
+	}
+
+	for (tileno = 0, tile = dec->tiles; tileno < dec->numtiles; ++tileno,
+	  ++tile) {
+		htileno = tileno % dec->numhtiles;
+		vtileno = tileno / dec->numhtiles;
+		tile->realmode = 0;
+		tile->state = JPC_TILE_INIT;
+		tile->xstart = JAS_MAX(dec->tilexoff + htileno * dec->tilewidth,
+		  dec->xstart);
+		tile->ystart = JAS_MAX(dec->tileyoff + vtileno * dec->tileheight,
+		  dec->ystart);
+		tile->xend = JAS_MIN(dec->tilexoff + (htileno + 1) *
+		  dec->tilewidth, dec->xend);
+		tile->yend = JAS_MIN(dec->tileyoff + (vtileno + 1) *
+		  dec->tileheight, dec->yend);
+		tile->numparts = 0;
+		tile->partno = 0;
+		tile->pkthdrstream = 0;
+		tile->pkthdrstreampos = 0;
+		tile->pptstab = 0;
+		tile->cp = 0;
+		tile->pi = 0;
+		if (!(tile->tcomps = jas_alloc2(dec->numcomps,
+		  sizeof(jpc_dec_tcomp_t)))) {
+			return -1;
+		}
+		for (compno = 0, cmpt = dec->cmpts, tcomp = tile->tcomps;
+		  compno < dec->numcomps; ++compno, ++cmpt, ++tcomp) {
+			tcomp->rlvls = 0;
+			tcomp->numrlvls = 0;
+			tcomp->data = 0;
+			tcomp->xstart = JPC_CEILDIV(tile->xstart, cmpt->hstep);
+			tcomp->ystart = JPC_CEILDIV(tile->ystart, cmpt->vstep);
+			tcomp->xend = JPC_CEILDIV(tile->xend, cmpt->hstep);
+			tcomp->yend = JPC_CEILDIV(tile->yend, cmpt->vstep);
+			tcomp->tsfb = 0;
+		}
+	}
+
+	dec->pkthdrstreams = 0;
+
+	/* We should expect to encounter other main header marker segments
+	  or an SOT marker segment next. */
+	dec->state = JPC_MH;
+
+	return 0;
+}
+",CWE-190,"[47, 50, 54]"
+"static struct line_info_table*
+decode_line_info (struct comp_unit *unit, struct dwarf2_debug *stash)
+{
+  bfd *abfd = unit->abfd;
+  struct line_info_table* table;
+  bfd_byte *line_ptr;
+  bfd_byte *line_end;
+  struct line_head lh;
+  unsigned int i, bytes_read, offset_size;
+  char *cur_file, *cur_dir;
+  unsigned char op_code, extended_op, adj_opcode;
+  unsigned int exop_len;
+  bfd_size_type amt;
+
+  if (! read_section (abfd, &stash->debug_sections[debug_line],
+		      stash->syms, unit->line_offset,
+		      &stash->dwarf_line_buffer, &stash->dwarf_line_size))
+    return NULL;
+
+  amt = sizeof (struct line_info_table);
+  table = (struct line_info_table *) bfd_alloc (abfd, amt);
+  if (table == NULL)
+    return NULL;
+  table->abfd = abfd;
+  table->comp_dir = unit->comp_dir;
+
+  table->num_files = 0;
+  table->files = NULL;
+
+  table->num_dirs = 0;
+  table->dirs = NULL;
+
+  table->num_sequences = 0;
+  table->sequences = NULL;
+
+  table->lcl_head = NULL;
+
+  if (stash->dwarf_line_size < 16)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Line info section is too small (%Ld)""),
+	 stash->dwarf_line_size);
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+  line_ptr = stash->dwarf_line_buffer + unit->line_offset;
+  line_end = stash->dwarf_line_buffer + stash->dwarf_line_size;
+
+  /* Read in the prologue.  */
+  lh.total_length = read_4_bytes (abfd, line_ptr, line_end);
+  line_ptr += 4;
+  offset_size = 4;
+  if (lh.total_length == 0xffffffff)
+    {
+      lh.total_length = read_8_bytes (abfd, line_ptr, line_end);
+      line_ptr += 8;
+      offset_size = 8;
+    }
+  else if (lh.total_length == 0 && unit->addr_size == 8)
+    {
+      /* Handle (non-standard) 64-bit DWARF2 formats.  */
+      lh.total_length = read_4_bytes (abfd, line_ptr, line_end);
+      line_ptr += 4;
+      offset_size = 8;
+    }
+
+  if (lh.total_length > (size_t) (line_end - line_ptr))
+    {
+      _bfd_error_handler
+	/* xgettext: c-format */
+	(_(""Dwarf Error: Line info data is bigger (%#Lx)""
+	   "" than the space remaining in the section (%#lx)""),
+	 lh.total_length, (unsigned long) (line_end - line_ptr));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  line_end = line_ptr + lh.total_length;
+
+  lh.version = read_2_bytes (abfd, line_ptr, line_end);
+  if (lh.version < 2 || lh.version > 5)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Unhandled .debug_line version %d.""), lh.version);
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+  line_ptr += 2;
+
+  if (line_ptr + offset_size + (lh.version >= 5 ? 8 : (lh.version >= 4 ? 6 : 5))
+      >= line_end)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Ran out of room reading prologue""));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  if (lh.version >= 5)
+    {
+      unsigned int segment_selector_size;
+
+      /* Skip address size.  */
+      read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+
+      segment_selector_size = read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+      if (segment_selector_size != 0)
+	{
+	  _bfd_error_handler
+	    (_(""Dwarf Error: Line info unsupported segment selector size %u.""),
+	     segment_selector_size);
+	  bfd_set_error (bfd_error_bad_value);
+	  return NULL;
+	}
+    }
+
+  if (offset_size == 4)
+    lh.prologue_length = read_4_bytes (abfd, line_ptr, line_end);
+  else
+    lh.prologue_length = read_8_bytes (abfd, line_ptr, line_end);
+  line_ptr += offset_size;
+
+  lh.minimum_instruction_length = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  if (lh.version >= 4)
+    {
+      lh.maximum_ops_per_insn = read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+    }
+  else
+    lh.maximum_ops_per_insn = 1;
+
+  if (lh.maximum_ops_per_insn == 0)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Invalid maximum operations per instruction.""));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  lh.default_is_stmt = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  lh.line_base = read_1_signed_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  lh.line_range = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  lh.opcode_base = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  if (line_ptr + (lh.opcode_base - 1) >= line_end)
+    {
+      _bfd_error_handler (_(""Dwarf Error: Ran out of room reading opcodes""));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  amt = lh.opcode_base * sizeof (unsigned char);
+  lh.standard_opcode_lengths = (unsigned char *) bfd_alloc (abfd, amt);
+
+  lh.standard_opcode_lengths[0] = 1;
+
+  for (i = 1; i < lh.opcode_base; ++i)
+    {
+      lh.standard_opcode_lengths[i] = read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+    }
+
+  if (lh.version >= 5)
+    {
+      /* Read directory table.  */
+      if (!read_formatted_entries (unit, &line_ptr, line_end, table,
+				   line_info_add_include_dir_stub))
+	goto fail;
+
+      /* Read file name table.  */
+      if (!read_formatted_entries (unit, &line_ptr, line_end, table,
+				   line_info_add_file_name))
+	goto fail;
+    }
+  else
+    {
+      /* Read directory table.  */
+      while ((cur_dir = read_string (abfd, line_ptr, line_end, &bytes_read)) != NULL)
+	{
+	  line_ptr += bytes_read;
+
+	  if (!line_info_add_include_dir (table, cur_dir))
+	    goto fail;
+	}
+
+      line_ptr += bytes_read;
+
+      /* Read file name table.  */
+      while ((cur_file = read_string (abfd, line_ptr, line_end, &bytes_read)) != NULL)
+	{
+	  unsigned int dir, xtime, size;
+
+	  line_ptr += bytes_read;
+
+	  dir = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read, FALSE, line_end);
+	  line_ptr += bytes_read;
+	  xtime = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read, FALSE, line_end);
+	  line_ptr += bytes_read;
+	  size = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read, FALSE, line_end);
+	  line_ptr += bytes_read;
+
+	  if (!line_info_add_file_name (table, cur_file, dir, xtime, size))
+	    goto fail;
+	}
+
+      line_ptr += bytes_read;
+    }
+
+  /* Read the statement sequences until there's nothing left.  */
+  while (line_ptr < line_end)
+    {
+      /* State machine registers.  */
+      bfd_vma address = 0;
+      unsigned char op_index = 0;
+      char * filename = table->num_files ? concat_filename (table, 1) : NULL;
+      unsigned int line = 1;
+      unsigned int column = 0;
+      unsigned int discriminator = 0;
+      int is_stmt = lh.default_is_stmt;
+      int end_sequence = 0;
+      /* eraxxon@alumni.rice.edu: Against the DWARF2 specs, some
+	 compilers generate address sequences that are wildly out of
+	 order using DW_LNE_set_address (e.g. Intel C++ 6.0 compiler
+	 for ia64-Linux).  Thus, to determine the low and high
+	 address, we must compare on every DW_LNS_copy, etc.  */
+      bfd_vma low_pc  = (bfd_vma) -1;
+      bfd_vma high_pc = 0;
+
+      /* Decode the table.  */
+      while (! end_sequence)
+	{
+	  op_code = read_1_byte (abfd, line_ptr, line_end);
+	  line_ptr += 1;
+
+	  if (op_code >= lh.opcode_base)
+	    {
+	      /* Special operand.  */
+	      adj_opcode = op_code - lh.opcode_base;
+	      if (lh.line_range == 0)
+		goto line_fail;
+	      if (lh.maximum_ops_per_insn == 1)
+		address += (adj_opcode / lh.line_range
+			    * lh.minimum_instruction_length);
+	      else
+		{
+		  address += ((op_index + adj_opcode / lh.line_range)
+			      / lh.maximum_ops_per_insn
+			      * lh.minimum_instruction_length);
+		  op_index = ((op_index + adj_opcode / lh.line_range)
+			      % lh.maximum_ops_per_insn);
+		}
+	      line += lh.line_base + (adj_opcode % lh.line_range);
+	      /* Append row to matrix using current values.  */
+	      if (!add_line_info (table, address, op_index, filename,
+				  line, column, discriminator, 0))
+		goto line_fail;
+	      discriminator = 0;
+	      if (address < low_pc)
+		low_pc = address;
+	      if (address > high_pc)
+		high_pc = address;
+	    }
+	  else switch (op_code)
+	    {
+	    case DW_LNS_extended_op:
+	      exop_len = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+						FALSE, line_end);
+	      line_ptr += bytes_read;
+	      extended_op = read_1_byte (abfd, line_ptr, line_end);
+	      line_ptr += 1;
+
+	      switch (extended_op)
+		{
+		case DW_LNE_end_sequence:
+		  end_sequence = 1;
+		  if (!add_line_info (table, address, op_index, filename, line,
+				      column, discriminator, end_sequence))
+		    goto line_fail;
+		  discriminator = 0;
+		  if (address < low_pc)
+		    low_pc = address;
+		  if (address > high_pc)
+		    high_pc = address;
+		  if (!arange_add (unit, &unit->arange, low_pc, high_pc))
+		    goto line_fail;
+		  break;
+		case DW_LNE_set_address:
+		  address = read_address (unit, line_ptr, line_end);
+		  op_index = 0;
+		  line_ptr += unit->addr_size;
+		  break;
+		case DW_LNE_define_file:
+		  cur_file = read_string (abfd, line_ptr, line_end, &bytes_read);
+		  line_ptr += bytes_read;
+		  if ((table->num_files % FILE_ALLOC_CHUNK) == 0)
+		    {
+		      struct fileinfo *tmp;
+
+		      amt = table->num_files + FILE_ALLOC_CHUNK;
+		      amt *= sizeof (struct fileinfo);
+		      tmp = (struct fileinfo *) bfd_realloc (table->files, amt);
+		      if (tmp == NULL)
+			goto line_fail;
+		      table->files = tmp;
+		    }
+		  table->files[table->num_files].name = cur_file;
+		  table->files[table->num_files].dir =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  table->files[table->num_files].time =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  table->files[table->num_files].size =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  table->num_files++;
+		  break;
+		case DW_LNE_set_discriminator:
+		  discriminator =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  break;
+		case DW_LNE_HP_source_file_correlation:
+		  line_ptr += exop_len - 1;
+		  break;
+		default:
+		  _bfd_error_handler
+		    (_(""Dwarf Error: mangled line number section.""));
+		  bfd_set_error (bfd_error_bad_value);
+		line_fail:
+		  if (filename != NULL)
+		    free (filename);
+		  goto fail;
+		}
+	      break;
+	    case DW_LNS_copy:
+	      if (!add_line_info (table, address, op_index,
+				  filename, line, column, discriminator, 0))
+		goto line_fail;
+	      discriminator = 0;
+	      if (address < low_pc)
+		low_pc = address;
+	      if (address > high_pc)
+		high_pc = address;
+	      break;
+	    case DW_LNS_advance_pc:
+	      if (lh.maximum_ops_per_insn == 1)
+		address += (lh.minimum_instruction_length
+			    * _bfd_safe_read_leb128 (abfd, line_ptr,
+						     &bytes_read,
+						     FALSE, line_end));
+	      else
+		{
+		  bfd_vma adjust = _bfd_safe_read_leb128 (abfd, line_ptr,
+							  &bytes_read,
+							  FALSE, line_end);
+		  address = ((op_index + adjust) / lh.maximum_ops_per_insn
+			     * lh.minimum_instruction_length);
+		  op_index = (op_index + adjust) % lh.maximum_ops_per_insn;
+		}
+	      line_ptr += bytes_read;
+	      break;
+	    case DW_LNS_advance_line:
+	      line += _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					     TRUE, line_end);
+	      line_ptr += bytes_read;
+	      break;
+	    case DW_LNS_set_file:
+	      {
+		unsigned int file;
+
+		/* The file and directory tables are 0
+		   based, the references are 1 based.  */
+		file = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					      FALSE, line_end);
+		line_ptr += bytes_read;
+		if (filename)
+		  free (filename);
+		filename = concat_filename (table, file);
+		break;
+	      }
+	    case DW_LNS_set_column:
+	      column = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					      FALSE, line_end);
+	      line_ptr += bytes_read;
+	      break;
+	    case DW_LNS_negate_stmt:
+	      is_stmt = (!is_stmt);
+	      break;
+	    case DW_LNS_set_basic_block:
+	      break;
+	    case DW_LNS_const_add_pc:
+	      if (lh.maximum_ops_per_insn == 1){
+		address += (lh.minimum_instruction_length * ((255 - lh.opcode_base) / lh.line_range));
+
+	      }else
+		{
+		  bfd_vma adjust = ((255 - lh.opcode_base) / lh.line_range);
+		  address += (lh.minimum_instruction_length
+			      * ((op_index + adjust)
+				 / lh.maximum_ops_per_insn));
+		  op_index = (op_index + adjust) % lh.maximum_ops_per_insn;
+		}
+	      break;
+	    case DW_LNS_fixed_advance_pc:
+	      address += read_2_bytes (abfd, line_ptr, line_end);
+	      op_index = 0;
+	      line_ptr += 2;
+	      break;
+	    default:
+	      /* Unknown standard opcode, ignore it.  */
+	      for (i = 0; i < lh.standard_opcode_lengths[op_code]; i++)
+		{
+		  (void) _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+						FALSE, line_end);
+		  line_ptr += bytes_read;
+		}
+	      break;
+	    }
+	}
+
+      if (filename)
+	free (filename);
+    }
+
+  if (sort_line_sequences (table))
+    return table;
+
+ fail:
+  if (table->sequences != NULL)
+    free (table->sequences);
+  if (table->files != NULL)
+    free (table->files);
+  if (table->dirs != NULL)
+    free (table->dirs);
+  return NULL;
+}
+","static struct line_info_table*
+decode_line_info (struct comp_unit *unit, struct dwarf2_debug *stash)
+{
+  bfd *abfd = unit->abfd;
+  struct line_info_table* table;
+  bfd_byte *line_ptr;
+  bfd_byte *line_end;
+  struct line_head lh;
+  unsigned int i, bytes_read, offset_size;
+  char *cur_file, *cur_dir;
+  unsigned char op_code, extended_op, adj_opcode;
+  unsigned int exop_len;
+  bfd_size_type amt;
+
+  if (! read_section (abfd, &stash->debug_sections[debug_line],
+		      stash->syms, unit->line_offset,
+		      &stash->dwarf_line_buffer, &stash->dwarf_line_size))
+    return NULL;
+
+  amt = sizeof (struct line_info_table);
+  table = (struct line_info_table *) bfd_alloc (abfd, amt);
+  if (table == NULL)
+    return NULL;
+  table->abfd = abfd;
+  table->comp_dir = unit->comp_dir;
+
+  table->num_files = 0;
+  table->files = NULL;
+
+  table->num_dirs = 0;
+  table->dirs = NULL;
+
+  table->num_sequences = 0;
+  table->sequences = NULL;
+
+  table->lcl_head = NULL;
+
+  if (stash->dwarf_line_size < 16)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Line info section is too small (%Ld)""),
+	 stash->dwarf_line_size);
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+  line_ptr = stash->dwarf_line_buffer + unit->line_offset;
+  line_end = stash->dwarf_line_buffer + stash->dwarf_line_size;
+
+  /* Read in the prologue.  */
+  lh.total_length = read_4_bytes (abfd, line_ptr, line_end);
+  line_ptr += 4;
+  offset_size = 4;
+  if (lh.total_length == 0xffffffff)
+    {
+      lh.total_length = read_8_bytes (abfd, line_ptr, line_end);
+      line_ptr += 8;
+      offset_size = 8;
+    }
+  else if (lh.total_length == 0 && unit->addr_size == 8)
+    {
+      /* Handle (non-standard) 64-bit DWARF2 formats.  */
+      lh.total_length = read_4_bytes (abfd, line_ptr, line_end);
+      line_ptr += 4;
+      offset_size = 8;
+    }
+
+  if (lh.total_length > (size_t) (line_end - line_ptr))
+    {
+      _bfd_error_handler
+	/* xgettext: c-format */
+	(_(""Dwarf Error: Line info data is bigger (%#Lx)""
+	   "" than the space remaining in the section (%#lx)""),
+	 lh.total_length, (unsigned long) (line_end - line_ptr));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  line_end = line_ptr + lh.total_length;
+
+  lh.version = read_2_bytes (abfd, line_ptr, line_end);
+  if (lh.version < 2 || lh.version > 5)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Unhandled .debug_line version %d.""), lh.version);
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+  line_ptr += 2;
+
+  if (line_ptr + offset_size + (lh.version >= 5 ? 8 : (lh.version >= 4 ? 6 : 5))
+      >= line_end)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Ran out of room reading prologue""));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  if (lh.version >= 5)
+    {
+      unsigned int segment_selector_size;
+
+      /* Skip address size.  */
+      read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+
+      segment_selector_size = read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+      if (segment_selector_size != 0)
+	{
+	  _bfd_error_handler
+	    (_(""Dwarf Error: Line info unsupported segment selector size %u.""),
+	     segment_selector_size);
+	  bfd_set_error (bfd_error_bad_value);
+	  return NULL;
+	}
+    }
+
+  if (offset_size == 4)
+    lh.prologue_length = read_4_bytes (abfd, line_ptr, line_end);
+  else
+    lh.prologue_length = read_8_bytes (abfd, line_ptr, line_end);
+  line_ptr += offset_size;
+
+  lh.minimum_instruction_length = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  if (lh.version >= 4)
+    {
+      lh.maximum_ops_per_insn = read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+    }
+  else
+    lh.maximum_ops_per_insn = 1;
+
+  if (lh.maximum_ops_per_insn == 0)
+    {
+      _bfd_error_handler
+	(_(""Dwarf Error: Invalid maximum operations per instruction.""));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  lh.default_is_stmt = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  lh.line_base = read_1_signed_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  lh.line_range = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  lh.opcode_base = read_1_byte (abfd, line_ptr, line_end);
+  line_ptr += 1;
+
+  if (line_ptr + (lh.opcode_base - 1) >= line_end)
+    {
+      _bfd_error_handler (_(""Dwarf Error: Ran out of room reading opcodes""));
+      bfd_set_error (bfd_error_bad_value);
+      return NULL;
+    }
+
+  amt = lh.opcode_base * sizeof (unsigned char);
+  lh.standard_opcode_lengths = (unsigned char *) bfd_alloc (abfd, amt);
+
+  lh.standard_opcode_lengths[0] = 1;
+
+  for (i = 1; i < lh.opcode_base; ++i)
+    {
+      lh.standard_opcode_lengths[i] = read_1_byte (abfd, line_ptr, line_end);
+      line_ptr += 1;
+    }
+
+  if (lh.version >= 5)
+    {
+      /* Read directory table.  */
+      if (!read_formatted_entries (unit, &line_ptr, line_end, table,
+				   line_info_add_include_dir_stub))
+	goto fail;
+
+      /* Read file name table.  */
+      if (!read_formatted_entries (unit, &line_ptr, line_end, table,
+				   line_info_add_file_name))
+	goto fail;
+    }
+  else
+    {
+      /* Read directory table.  */
+      while ((cur_dir = read_string (abfd, line_ptr, line_end, &bytes_read)) != NULL)
+	{
+	  line_ptr += bytes_read;
+
+	  if (!line_info_add_include_dir (table, cur_dir))
+	    goto fail;
+	}
+
+      line_ptr += bytes_read;
+
+      /* Read file name table.  */
+      while ((cur_file = read_string (abfd, line_ptr, line_end, &bytes_read)) != NULL)
+	{
+	  unsigned int dir, xtime, size;
+
+	  line_ptr += bytes_read;
+
+	  dir = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read, FALSE, line_end);
+	  line_ptr += bytes_read;
+	  xtime = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read, FALSE, line_end);
+	  line_ptr += bytes_read;
+	  size = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read, FALSE, line_end);
+	  line_ptr += bytes_read;
+
+	  if (!line_info_add_file_name (table, cur_file, dir, xtime, size))
+	    goto fail;
+	}
+
+      line_ptr += bytes_read;
+    }
+
+  /* Read the statement sequences until there's nothing left.  */
+  while (line_ptr < line_end)
+    {
+      /* State machine registers.  */
+      bfd_vma address = 0;
+      unsigned char op_index = 0;
+      char * filename = table->num_files ? concat_filename (table, 1) : NULL;
+      unsigned int line = 1;
+      unsigned int column = 0;
+      unsigned int discriminator = 0;
+      int is_stmt = lh.default_is_stmt;
+      int end_sequence = 0;
+      /* eraxxon@alumni.rice.edu: Against the DWARF2 specs, some
+	 compilers generate address sequences that are wildly out of
+	 order using DW_LNE_set_address (e.g. Intel C++ 6.0 compiler
+	 for ia64-Linux).  Thus, to determine the low and high
+	 address, we must compare on every DW_LNS_copy, etc.  */
+      bfd_vma low_pc  = (bfd_vma) -1;
+      bfd_vma high_pc = 0;
+
+      /* Decode the table.  */
+      while (! end_sequence)
+	{
+	  op_code = read_1_byte (abfd, line_ptr, line_end);
+	  line_ptr += 1;
+
+	  if (op_code >= lh.opcode_base)
+	    {
+	      /* Special operand.  */
+	      adj_opcode = op_code - lh.opcode_base;
+	      if (lh.line_range == 0)
+		goto line_fail;
+	      if (lh.line_range == 0)
+               goto line_fail;
+	      if (lh.maximum_ops_per_insn == 1)
+		address += (adj_opcode / lh.line_range
+			    * lh.minimum_instruction_length);
+	      else
+		{
+		  address += ((op_index + adj_opcode / lh.line_range)
+			      / lh.maximum_ops_per_insn
+			      * lh.minimum_instruction_length);
+		  op_index = ((op_index + adj_opcode / lh.line_range)
+			      % lh.maximum_ops_per_insn);
+		}
+	      line += lh.line_base + (adj_opcode % lh.line_range);
+	      /* Append row to matrix using current values.  */
+	      if (!add_line_info (table, address, op_index, filename,
+				  line, column, discriminator, 0))
+		goto line_fail;
+	      discriminator = 0;
+	      if (address < low_pc)
+		low_pc = address;
+	      if (address > high_pc)
+		high_pc = address;
+	    }
+	  else switch (op_code)
+	    {
+	    case DW_LNS_extended_op:
+	      exop_len = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+						FALSE, line_end);
+	      line_ptr += bytes_read;
+	      extended_op = read_1_byte (abfd, line_ptr, line_end);
+	      line_ptr += 1;
+
+	      switch (extended_op)
+		{
+		case DW_LNE_end_sequence:
+		  end_sequence = 1;
+		  if (!add_line_info (table, address, op_index, filename, line,
+				      column, discriminator, end_sequence))
+		    goto line_fail;
+		  discriminator = 0;
+		  if (address < low_pc)
+		    low_pc = address;
+		  if (address > high_pc)
+		    high_pc = address;
+		  if (!arange_add (unit, &unit->arange, low_pc, high_pc))
+		    goto line_fail;
+		  break;
+		case DW_LNE_set_address:
+		  address = read_address (unit, line_ptr, line_end);
+		  op_index = 0;
+		  line_ptr += unit->addr_size;
+		  break;
+		case DW_LNE_define_file:
+		  cur_file = read_string (abfd, line_ptr, line_end, &bytes_read);
+		  line_ptr += bytes_read;
+		  if ((table->num_files % FILE_ALLOC_CHUNK) == 0)
+		    {
+		      struct fileinfo *tmp;
+
+		      amt = table->num_files + FILE_ALLOC_CHUNK;
+		      amt *= sizeof (struct fileinfo);
+		      tmp = (struct fileinfo *) bfd_realloc (table->files, amt);
+		      if (tmp == NULL)
+			goto line_fail;
+		      table->files = tmp;
+		    }
+		  table->files[table->num_files].name = cur_file;
+		  table->files[table->num_files].dir =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  table->files[table->num_files].time =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  table->files[table->num_files].size =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  table->num_files++;
+		  break;
+		case DW_LNE_set_discriminator:
+		  discriminator =
+		    _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					   FALSE, line_end);
+		  line_ptr += bytes_read;
+		  break;
+		case DW_LNE_HP_source_file_correlation:
+		  line_ptr += exop_len - 1;
+		  break;
+		default:
+		  _bfd_error_handler
+		    (_(""Dwarf Error: mangled line number section.""));
+		  bfd_set_error (bfd_error_bad_value);
+		line_fail:
+		  if (filename != NULL)
+		    free (filename);
+		  goto fail;
+		}
+	      break;
+	    case DW_LNS_copy:
+	      if (!add_line_info (table, address, op_index,
+				  filename, line, column, discriminator, 0))
+		goto line_fail;
+	      discriminator = 0;
+	      if (address < low_pc)
+		low_pc = address;
+	      if (address > high_pc)
+		high_pc = address;
+	      break;
+	    case DW_LNS_advance_pc:
+	      if (lh.maximum_ops_per_insn == 1)
+		address += (lh.minimum_instruction_length
+			    * _bfd_safe_read_leb128 (abfd, line_ptr,
+						     &bytes_read,
+						     FALSE, line_end));
+	      else
+		{
+		  bfd_vma adjust = _bfd_safe_read_leb128 (abfd, line_ptr,
+							  &bytes_read,
+							  FALSE, line_end);
+		  address = ((op_index + adjust) / lh.maximum_ops_per_insn
+			     * lh.minimum_instruction_length);
+		  op_index = (op_index + adjust) % lh.maximum_ops_per_insn;
+		}
+	      line_ptr += bytes_read;
+	      break;
+	    case DW_LNS_advance_line:
+	      line += _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					     TRUE, line_end);
+	      line_ptr += bytes_read;
+	      break;
+	    case DW_LNS_set_file:
+	      {
+		unsigned int file;
+
+		/* The file and directory tables are 0
+		   based, the references are 1 based.  */
+		file = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					      FALSE, line_end);
+		line_ptr += bytes_read;
+		if (filename)
+		  free (filename);
+		filename = concat_filename (table, file);
+		break;
+	      }
+	    case DW_LNS_set_column:
+	      column = _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+					      FALSE, line_end);
+	      line_ptr += bytes_read;
+	      break;
+	    case DW_LNS_negate_stmt:
+	      is_stmt = (!is_stmt);
+	      break;
+	    case DW_LNS_set_basic_block:
+	      break;
+	    case DW_LNS_const_add_pc:
+	      if (lh.maximum_ops_per_insn == 1){
+		address += (lh.minimum_instruction_length * ((255 - lh.opcode_base) / lh.line_range));
+
+	      }else
+		{
+		  bfd_vma adjust = ((255 - lh.opcode_base) / lh.line_range);
+		  address += (lh.minimum_instruction_length
+			      * ((op_index + adjust)
+				 / lh.maximum_ops_per_insn));
+		  op_index = (op_index + adjust) % lh.maximum_ops_per_insn;
+		}
+	      break;
+	    case DW_LNS_fixed_advance_pc:
+	      address += read_2_bytes (abfd, line_ptr, line_end);
+	      op_index = 0;
+	      line_ptr += 2;
+	      break;
+	    default:
+	      /* Unknown standard opcode, ignore it.  */
+	      for (i = 0; i < lh.standard_opcode_lengths[op_code]; i++)
+		{
+		  (void) _bfd_safe_read_leb128 (abfd, line_ptr, &bytes_read,
+						FALSE, line_end);
+		  line_ptr += bytes_read;
+		}
+	      break;
+	    }
+	}
+
+      if (filename)
+	free (filename);
+    }
+
+  if (sort_line_sequences (table))
+    return table;
+
+ fail:
+  if (table->sequences != NULL)
+    free (table->sequences);
+  if (table->files != NULL)
+    free (table->files);
+  if (table->dirs != NULL)
+    free (table->dirs);
+  return NULL;
+}
+",CWE-190,['?']
+"static xmlChar *
+xmlParseAttValueComplex(xmlParserCtxtPtr ctxt, int *attlen, int normalize) {
+    xmlChar limit = 0;
+    xmlChar *buf = NULL;
+    xmlChar *rep = NULL;
+    size_t len = 0;
+    size_t buf_size = 0;
+    int c, l, in_space = 0;
+    xmlChar *current = NULL;
+    xmlEntityPtr ent;
+
+    if (NXT(0) == '""') {
+	ctxt->instate = XML_PARSER_ATTRIBUTE_VALUE;
+	limit = '""';
+        NEXT;
+    } else if (NXT(0) == '\'') {
+	limit = '\'';
+	ctxt->instate = XML_PARSER_ATTRIBUTE_VALUE;
+        NEXT;
+    } else {
+	xmlFatalErr(ctxt, XML_ERR_ATTRIBUTE_NOT_STARTED, NULL);
+	return(NULL);
+    }
+
+    /*
+     * allocate a translation buffer.
+     */
+    buf_size = XML_PARSER_BUFFER_SIZE;
+    buf = (xmlChar *) xmlMallocAtomic(buf_size);
+    if (buf == NULL) goto mem_error;
+
+    /*
+     * OK loop until we reach one of the ending char or a size limit.
+     */
+    c = CUR_CHAR(l);
+    while (((NXT(0) != limit) && /* checked */
+            (IS_CHAR(c)) && (c != '<')) &&
+            (ctxt->instate != XML_PARSER_EOF)) {
+        /*
+         * Impose a reasonable limit on attribute size, unless XML_PARSE_HUGE
+         * special option is given
+         */
+        if ((len > XML_MAX_TEXT_LENGTH) &&
+            ((ctxt->options & XML_PARSE_HUGE) == 0)) {
+            xmlFatalErrMsg(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+                           ""AttValue lenght too long\n"");
+            goto mem_error;
+        }
+	if (c == 0) break;
+	if (c == '&') {
+	    in_space = 0;
+	    if (NXT(1) == '#') {
+		int val = xmlParseCharRef(ctxt);
+
+		if (val == '&') {
+		    if (ctxt->replaceEntities) {
+			if (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+			buf[len++] = '&';
+		    } else {
+			/*
+			 * The reparsing will be done in xmlStringGetNodeList()
+			 * called by the attribute() function in SAX.c
+			 */
+			if (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+			buf[len++] = '&';
+			buf[len++] = '#';
+			buf[len++] = '3';
+			buf[len++] = '8';
+			buf[len++] = ';';
+		    }
+		} else if (val != 0) {
+		    if (len + 10 > buf_size) {
+			growBuffer(buf, 10);
+		    }
+		    len += xmlCopyChar(0, &buf[len], val);
+		}
+	    } else {
+		ent = xmlParseEntityRef(ctxt);
+		ctxt->nbentities++;
+		if (ent != NULL)
+		    ctxt->nbentities += ent->owner;
+		if ((ent != NULL) &&
+		    (ent->etype == XML_INTERNAL_PREDEFINED_ENTITY)) {
+		    if (len + 10 > buf_size) {
+			growBuffer(buf, 10);
+		    }
+		    if ((ctxt->replaceEntities == 0) &&
+		        (ent->content[0] == '&')) {
+			buf[len++] = '&';
+			buf[len++] = '#';
+			buf[len++] = '3';
+			buf[len++] = '8';
+			buf[len++] = ';';
+		    } else {
+			buf[len++] = ent->content[0];
+		    }
+		} else if ((ent != NULL) &&
+		           (ctxt->replaceEntities != 0)) {
+		    if (ent->etype != XML_INTERNAL_PREDEFINED_ENTITY) {
+			rep = xmlStringDecodeEntities(ctxt, ent->content,
+						      XML_SUBSTITUTE_REF,
+						      0, 0, 0);
+			if (rep != NULL) {
+			    current = rep;
+			    while (*current != 0) { /* non input consuming */
+                                if ((*current == 0xD) || (*current == 0xA) ||
+                                    (*current == 0x9)) {
+                                    buf[len++] = 0x20;
+                                    current++;
+                                } else
+                                    buf[len++] = *current++;
+				if (len + 10 > buf_size) {
+				    growBuffer(buf, 10);
+				}
+			    }
+			    xmlFree(rep);
+			    rep = NULL;
+			}
+		    } else {
+			if (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+			if (ent->content != NULL)
+			    buf[len++] = ent->content[0];
+		    }
+		} else if (ent != NULL) {
+		    int i = xmlStrlen(ent->name);
+		    const xmlChar *cur = ent->name;
+
+		    /*
+		     * This may look absurd but is needed to detect
+		     * entities problems
+		     */
+		    if ((ent->etype != XML_INTERNAL_PREDEFINED_ENTITY) &&
+			(ent->content != NULL)) {
+			rep = xmlStringDecodeEntities(ctxt, ent->content,
+						  XML_SUBSTITUTE_REF, 0, 0, 0);
+			if (rep != NULL) {
+			    xmlFree(rep);
+			    rep = NULL;
+			}
+		    }
+
+		    /*
+		     * Just output the reference
+		     */
+		    buf[len++] = '&';
+		    while (len + i + 10 > buf_size) {
+			growBuffer(buf, i + 10);
+		    }
+		    for (;i > 0;i--)
+			buf[len++] = *cur++;
+		    buf[len++] = ';';
+		}
+	    }
+	} else {
+	    if ((c == 0x20) || (c == 0xD) || (c == 0xA) || (c == 0x9)) {
+	        if ((len != 0) || (!normalize)) {
+		    if ((!normalize) || (!in_space)) {
+			COPY_BUF(l,buf,len,0x20);
+			while (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+		    }
+		    in_space = 1;
+		}
+	    } else {
+	        in_space = 0;
+		COPY_BUF(l,buf,len,c);
+		if (len + 10 > buf_size) {
+		    growBuffer(buf, 10);
+		}
+	    }
+	    NEXTL(l);
+	}
+	GROW;
+	c = CUR_CHAR(l);
+    }
+    if (ctxt->instate == XML_PARSER_EOF)
+        goto error;
+
+    if ((in_space) && (normalize)) {
+        while (buf[len - 1] == 0x20) len--;
+    }
+    buf[len] = 0;
+    if (RAW == '<') {
+	xmlFatalErr(ctxt, XML_ERR_LT_IN_ATTRIBUTE, NULL);
+    } else if (RAW != limit) {
+	if ((c != 0) && (!IS_CHAR(c))) {
+	    xmlFatalErrMsg(ctxt, XML_ERR_INVALID_CHAR,
+			   ""invalid character in attribute value\n"");
+	} else {
+	    xmlFatalErrMsg(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+			   ""AttValue: ' expected\n"");
+        }
+    } else
+	NEXT;
+
+    /*
+     * There we potentially risk an overflow, don't allow attribute value of
+     * lenght more than INT_MAX it is a very reasonnable assumption !
+     */
+    if (len >= INT_MAX) {
+        xmlFatalErrMsg(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+                       ""AttValue lenght too long\n"");
+        goto mem_error;
+    }
+
+    if (attlen != NULL) *attlen = (int) len;
+    return(buf);
+
+mem_error:
+    xmlErrMemory(ctxt, NULL);
+error:
+    if (buf != NULL)
+        xmlFree(buf);
+    if (rep != NULL)
+        xmlFree(rep);
+    return(NULL);
+}
+","static xmlChar *
+xmlParseAttValueComplex(xmlParserCtxtPtr ctxt, int *attlen, int normalize) {
+    xmlChar limit = 0;
+    xmlChar *buf = NULL;
+    xmlChar *rep = NULL;
+    size_t len = 0;
+    size_t buf_size = 0;
+    int c, l, in_space = 0;
+    xmlChar *current = NULL;
+    xmlEntityPtr ent;
+
+    if (NXT(0) == '""') {
+	ctxt->instate = XML_PARSER_ATTRIBUTE_VALUE;
+	limit = '""';
+        NEXT;
+    } else if (NXT(0) == '\'') {
+	limit = '\'';
+	ctxt->instate = XML_PARSER_ATTRIBUTE_VALUE;
+        NEXT;
+    } else {
+	xmlFatalErr(ctxt, XML_ERR_ATTRIBUTE_NOT_STARTED, NULL);
+	return(NULL);
+    }
+
+    /*
+     * allocate a translation buffer.
+     */
+    buf_size = XML_PARSER_BUFFER_SIZE;
+    buf = (xmlChar *) xmlMallocAtomic(buf_size);
+    if (buf == NULL) goto mem_error;
+
+    /*
+     * OK loop until we reach one of the ending char or a size limit.
+     */
+    c = CUR_CHAR(l);
+    while (((NXT(0) != limit) && /* checked */
+            (IS_CHAR(c)) && (c != '<')) &&
+            (ctxt->instate != XML_PARSER_EOF)) {
+        /*
+         * Impose a reasonable limit on attribute size, unless XML_PARSE_HUGE
+         * special option is given
+         */
+        if ((len > XML_MAX_TEXT_LENGTH) &&
+            ((ctxt->options & XML_PARSE_HUGE) == 0)) {
+            xmlFatalErrMsg(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+                           ""AttValue lenght too long\n"");
+            goto mem_error;
+        }
+	if (c == 0) break;
+	if (c == '&') {
+	    in_space = 0;
+	    if (NXT(1) == '#') {
+		int val = xmlParseCharRef(ctxt);
+
+		if (val == '&') {
+		    if (ctxt->replaceEntities) {
+			if (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+			buf[len++] = '&';
+		    } else {
+			/*
+			 * The reparsing will be done in xmlStringGetNodeList()
+			 * called by the attribute() function in SAX.c
+			 */
+			if (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+			buf[len++] = '&';
+			buf[len++] = '#';
+			buf[len++] = '3';
+			buf[len++] = '8';
+			buf[len++] = ';';
+		    }
+		} else if (val != 0) {
+		    if (len + 10 > buf_size) {
+			growBuffer(buf, 10);
+		    }
+		    len += xmlCopyChar(0, &buf[len], val);
+		}
+	    } else {
+		ent = xmlParseEntityRef(ctxt);
+		ctxt->nbentities++;
+		if (ent != NULL)
+		    ctxt->nbentities += ent->owner;
+		if ((ent != NULL) &&
+		    (ent->etype == XML_INTERNAL_PREDEFINED_ENTITY)) {
+		    if (len + 10 > buf_size) {
+			growBuffer(buf, 10);
+		    }
+		    if ((ctxt->replaceEntities == 0) &&
+		        (ent->content[0] == '&')) {
+			buf[len++] = '&';
+			buf[len++] = '#';
+			buf[len++] = '3';
+			buf[len++] = '8';
+			buf[len++] = ';';
+		    } else {
+			buf[len++] = ent->content[0];
+		    }
+		} else if ((ent != NULL) &&
+		           (ctxt->replaceEntities != 0)) {
+		    if (ent->etype != XML_INTERNAL_PREDEFINED_ENTITY) {
+			rep = xmlStringDecodeEntities(ctxt, ent->content,
+						      XML_SUBSTITUTE_REF,
+						      0, 0, 0);
+			if (rep != NULL) {
+			    current = rep;
+			    while (*current != 0) { /* non input consuming */
+                                if ((*current == 0xD) || (*current == 0xA) ||
+                                    (*current == 0x9)) {
+                                    buf[len++] = 0x20;
+                                    current++;
+                                } else
+                                    buf[len++] = *current++;
+				if (len + 10 > buf_size) {
+				    growBuffer(buf, 10);
+				}
+			    }
+			    xmlFree(rep);
+			    rep = NULL;
+			}
+		    } else {
+			if (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+			if (ent->content != NULL)
+			    buf[len++] = ent->content[0];
+		    }
+		} else if (ent != NULL) {
+		    int i = xmlStrlen(ent->name);
+		    const xmlChar *cur = ent->name;
+
+		    /*
+		     * This may look absurd but is needed to detect
+		     * entities problems
+		     */
+		    if ((ent->etype != XML_INTERNAL_PREDEFINED_ENTITY) &&
+			(ent->content != NULL)) {
+			rep = xmlStringDecodeEntities(ctxt, ent->content,
+						  XML_SUBSTITUTE_REF, 0, 0, 0);
+			if (rep != NULL) {
+			    xmlFree(rep);
+			    rep = NULL;
+			}
+		    }
+
+		    /*
+		     * Just output the reference
+		     */
+		    buf[len++] = '&';
+		    while (len + i + 10 > buf_size) {
+			growBuffer(buf, i + 10);
+		    }
+		    for (;i > 0;i--)
+			buf[len++] = *cur++;
+		    buf[len++] = ';';
+		}
+	    }
+	} else {
+	    if ((c == 0x20) || (c == 0xD) || (c == 0xA) || (c == 0x9)) {
+	        if ((len != 0) || (!normalize)) {
+		    if ((!normalize) || (!in_space)) {
+			COPY_BUF(l,buf,len,0x20);
+			while (len + 10 > buf_size) {
+			    growBuffer(buf, 10);
+			}
+		    }
+		    in_space = 1;
+		}
+	    } else {
+	        in_space = 0;
+		COPY_BUF(l,buf,len,c);
+		if (len + 10 > buf_size) {
+		    growBuffer(buf, 10);
+		}
+	    }
+	    NEXTL(l);
+	}
+	GROW;
+	c = CUR_CHAR(l);
+    }
+    if (ctxt->instate == XML_PARSER_EOF)
+        goto error;
+
+    if ((in_space) && (normalize)) {
+    	while ((len > 0) && (buf[len - 1] == 0x20)) len--;
+    }
+    buf[len] = 0;
+    if (RAW == '<') {
+	xmlFatalErr(ctxt, XML_ERR_LT_IN_ATTRIBUTE, NULL);
+    } else if (RAW != limit) {
+	if ((c != 0) && (!IS_CHAR(c))) {
+	    xmlFatalErrMsg(ctxt, XML_ERR_INVALID_CHAR,
+			   ""invalid character in attribute value\n"");
+	} else {
+	    xmlFatalErrMsg(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+			   ""AttValue: ' expected\n"");
+        }
+    } else
+	NEXT;
+
+    /*
+     * There we potentially risk an overflow, don't allow attribute value of
+     * lenght more than INT_MAX it is a very reasonnable assumption !
+     */
+    if (len >= INT_MAX) {
+        xmlFatalErrMsg(ctxt, XML_ERR_ATTRIBUTE_NOT_FINISHED,
+                       ""AttValue lenght too long\n"");
+        goto mem_error;
+    }
+
+    if (attlen != NULL) *attlen = (int) len;
+    return(buf);
+
+mem_error:
+    xmlErrMemory(ctxt, NULL);
+error:
+    if (buf != NULL)
+        xmlFree(buf);
+    if (rep != NULL)
+        xmlFree(rep);
+    return(NULL);
+}
+",CWE-125,[187]
+"static void
+fillpattern (int type, unsigned char *r, size_t size)
+{
+  size_t i;
+  unsigned int bits = type & 0xfff;
+
+  bits |= bits << 12;
+  r[0] = (bits >> 4) & 255;
+  r[1] = (bits >> 8) & 255;
+  r[2] = bits & 255;
+  for (i = 3; i < size / 2; i *= 2)
+    memcpy (r + i, r, i);
+  if (i < size)
+    memcpy (r + i, r, size - i);
+
+  /* Invert the first bit of every sector. */
+  if (type & 0x1000)
+    for (i = 0; i < size; i += SECTOR_SIZE)
+      r[i] ^= 0x80;
+}
+","static void
+fillpattern (int type, unsigned char *r, size_t size)
+{
+  size_t i;
+  unsigned int bits = type & 0xfff;
+
+  bits |= bits << 12;
+  r[0] = (bits >> 4) & 255;
+  r[1] = (bits >> 8) & 255;
+  r[2] = bits & 255;
+  for (i = 3; i <= size / 2; i *= 2)
+    memcpy (r + i, r, i);
+  if (i < size)
+    memcpy (r + i, r, size - i);
+
+  /* Invert the first bit of every sector. */
+  if (type & 0x1000)
+    for (i = 0; i < size; i += SECTOR_SIZE)
+      r[i] ^= 0x80;
+}
+",CWE-787,"[11, 12]"
+"static void
+setImage1(const uint8* br, uint32 rw, uint32 rh)
+{
+    int step = rh;
+    int limit = tnh;
+    int err = 0;
+    int bpr = TIFFhowmany8(rw);
+    int sy = 0;
+    uint8* row = thumbnail;
+    uint32 dy;
+    for (dy = 0; dy < tnh; dy++) {
+	const uint8* rows[256];
+	uint32 nrows = 1;
+	fprintf(stderr, ""bpr=%d, sy=%d, bpr*sy=%d\n"", bpr, sy, bpr*sy);
+	rows[0] = br + bpr*sy;
+	err += step;
+	while (err >= limit) {
+	    err -= limit;
+	    sy++;
+	    if (err >= limit)
+		rows[nrows++] = br + bpr*sy;
+	}
+	setrow(row, nrows, rows);
+	row += tnw;
+    }
+}
+","static void
+setImage1(const uint8* br, uint32 rw, uint32 rh)
+{
+    int step = rh;
+    int limit = tnh;
+    int err = 0;
+    int bpr = TIFFhowmany8(rw);
+    int sy = 0;
+    uint8* row = thumbnail;
+    uint32 dy;
+    for (dy = 0; dy < tnh; dy++) {
+	const uint8* rows[256];
+	uint32 nrows = 1;
+	fprintf(stderr, ""bpr=%d, sy=%d, bpr*sy=%d\n"", bpr, sy, bpr*sy);
+	rows[0] = br + bpr*sy;
+	err += step;
+	while (err >= limit) {
+	    err -= limit;
+	    sy++;
+	    if (err >= limit)
+		if( nrows == 256 )
+                     break;
+		rows[nrows++] = br + bpr*sy;
+	}
+	setrow(row, nrows, rows);
+	row += tnw;
+    }
+}
+",CWE-787,"[12, 21]"
+"static int decode_dds1(GetByteContext *gb, uint8_t *frame, int width, int height)
+{
+    const uint8_t *frame_start = frame;
+    const uint8_t *frame_end   = frame + width * height;
+    int mask = 0x10000, bitbuf = 0;
+    int i, v, offset, count, segments;
+
+    segments = bytestream2_get_le16(gb);
+    while (segments--) {
+        if (bytestream2_get_bytes_left(gb) < 2)
+            return AVERROR_INVALIDDATA;
+        if (mask == 0x10000) {
+            bitbuf = bytestream2_get_le16u(gb);
+            mask = 1;
+        }
+
+        if (bitbuf & mask) {
+            v = bytestream2_get_le16(gb);
+            offset = (v & 0x1FFF) << 2;
+            count = ((v >> 13) + 2) << 1;
+            if (frame - frame_start < offset || frame_end - frame < count*2 + width)
+                return AVERROR_INVALIDDATA;
+            for (i = 0; i < count; i++) {
+                frame[0] = frame[1] =
+                frame[width] = frame[width + 1] = frame[-offset];
+
+                frame += 2;
+            }
+        } else if (bitbuf & (mask << 1)) {
+            v = bytestream2_get_le16(gb)*2;
+            if (frame - frame_end < v)
+                return AVERROR_INVALIDDATA;
+            frame += v;
+        } else {
+            if (frame_end - frame < width + 3)
+                return AVERROR_INVALIDDATA;
+            frame[0] = frame[1] =
+            frame[width] = frame[width + 1] =  bytestream2_get_byte(gb);
+            frame += 2;
+            frame[0] = frame[1] =
+            frame[width] = frame[width + 1] =  bytestream2_get_byte(gb);
+            frame += 2;
+        }
+        mask <<= 2;
+    }
+
+    return 0;
+}
+","static int decode_dds1(GetByteContext *gb, uint8_t *frame, int width, int height)
+{
+    const uint8_t *frame_start = frame;
+    const uint8_t *frame_end   = frame + width * height;
+    int mask = 0x10000, bitbuf = 0;
+    int i, v, offset, count, segments;
+
+    segments = bytestream2_get_le16(gb);
+    while (segments--) {
+        if (bytestream2_get_bytes_left(gb) < 2)
+            return AVERROR_INVALIDDATA;
+        if (mask == 0x10000) {
+            bitbuf = bytestream2_get_le16u(gb);
+            mask = 1;
+        }
+
+        if (bitbuf & mask) {
+            v = bytestream2_get_le16(gb);
+            offset = (v & 0x1FFF) << 2;
+            count = ((v >> 13) + 2) << 1;
+            if (frame - frame_start < offset || frame_end - frame < count*2 + width)
+                return AVERROR_INVALIDDATA;
+            for (i = 0; i < count; i++) {
+                frame[0] = frame[1] =
+                frame[width] = frame[width + 1] = frame[-offset];
+
+                frame += 2;
+            }
+        } else if (bitbuf & (mask << 1)) {
+            v = bytestream2_get_le16(gb)*2;
+            if (frame - frame_end < v)
+                return AVERROR_INVALIDDATA;
+            frame += v;
+        } else {
+            if (frame_end - frame < width + 4)
+                return AVERROR_INVALIDDATA;
+            frame[0] = frame[1] =
+            frame[width] = frame[width + 1] =  bytestream2_get_byte(gb);
+            frame += 2;
+            frame[0] = frame[1] =
+            frame[width] = frame[width + 1] =  bytestream2_get_byte(gb);
+            frame += 2;
+        }
+        mask <<= 2;
+    }
+
+    return 0;
+}
+",CWE-787,['?']
+"quantize_ord_dither (j_decompress_ptr cinfo, JSAMPARRAY input_buf,
+                     JSAMPARRAY output_buf, int num_rows)
+/* General case, with ordered dithering */
+{
+  my_cquantize_ptr cquantize = (my_cquantize_ptr) cinfo->cquantize;
+  register JSAMPROW input_ptr;
+  register JSAMPROW output_ptr;
+  JSAMPROW colorindex_ci;
+  int *dither;                  /* points to active row of dither matrix */
+  int row_index, col_index;     /* current indexes into dither matrix */
+  int nc = cinfo->out_color_components;
+  int ci;
+  int row;
+  JDIMENSION col;
+  JDIMENSION width = cinfo->output_width;
+
+  for (row = 0; row < num_rows; row++) {
+    /* Initialize output values to 0 so can process components separately */
+    jzero_far((void *) output_buf[row], (size_t) (width * sizeof(JSAMPLE)));
+    row_index = cquantize->row_index;
+    for (ci = 0; ci < nc; ci++) {
+      input_ptr = input_buf[row] + ci;
+      output_ptr = output_buf[row];
+      colorindex_ci = cquantize->colorindex[ci];
+      dither = cquantize->odither[ci][row_index];
+      col_index = 0;
+
+      for (col = width; col > 0; col--) {
+        /* Form pixel value + dither, range-limit to 0..MAXJSAMPLE,
+         * select output value, accumulate into output code for this pixel.
+         * Range-limiting need not be done explicitly, as we have extended
+         * the colorindex table to produce the right answers for out-of-range
+         * inputs.  The maximum dither is +- MAXJSAMPLE; this sets the
+         * required amount of padding.
+         */
+        *output_ptr += colorindex_ci[GETJSAMPLE(*input_ptr)+dither[col_index]];
+        input_ptr += nc;
+        output_ptr++;
+        col_index = (col_index + 1) & ODITHER_MASK;
+      }
+    }
+    /* Advance row index for next row */
+    row_index = (row_index + 1) & ODITHER_MASK;
+    cquantize->row_index = row_index;
+  }
+}
+","quantize_ord_dither (j_decompress_ptr cinfo, JSAMPARRAY input_buf,
+                     JSAMPARRAY output_buf, int num_rows)
+/* General case, with ordered dithering */
+{
+  my_cquantize_ptr cquantize = (my_cquantize_ptr) cinfo->cquantize;
+  register JSAMPROW input_ptr;
+  register JSAMPROW output_ptr;
+  JSAMPROW colorindex_ci;
+  int *dither;                  /* points to active row of dither matrix */
+  int row_index, col_index;     /* current indexes into dither matrix */
+  int nc = cinfo->out_color_components;
+  int ci;
+  int row;
+  JDIMENSION col;
+  JDIMENSION width = cinfo->output_width;
+  if (output_buf == NULL && num_rows) {
+    ERREXIT(cinfo, JERR_BAD_PARAM);
+  }
+
+
+  for (row = 0; row < num_rows; row++) {
+    /* Initialize output values to 0 so can process components separately */
+    jzero_far((void *) output_buf[row], (size_t) (width * sizeof(JSAMPLE)));
+    row_index = cquantize->row_index;
+    for (ci = 0; ci < nc; ci++) {
+      input_ptr = input_buf[row] + ci;
+      output_ptr = output_buf[row];
+      colorindex_ci = cquantize->colorindex[ci];
+      dither = cquantize->odither[ci][row_index];
+      col_index = 0;
+
+      for (col = width; col > 0; col--) {
+        /* Form pixel value + dither, range-limit to 0..MAXJSAMPLE,
+         * select output value, accumulate into output code for this pixel.
+         * Range-limiting need not be done explicitly, as we have extended
+         * the colorindex table to produce the right answers for out-of-range
+         * inputs.  The maximum dither is +- MAXJSAMPLE; this sets the
+         * required amount of padding.
+         */
+        *output_ptr += colorindex_ci[GETJSAMPLE(*input_ptr)+dither[col_index]];
+        input_ptr += nc;
+        output_ptr++;
+        col_index = (col_index + 1) & ODITHER_MASK;
+      }
+    }
+    /* Advance row index for next row */
+    row_index = (row_index + 1) & ODITHER_MASK;
+    cquantize->row_index = row_index;
+  }
+}
+",CWE-476,"[2, 19]"
+"static int
+OJPEGDecodeRaw(TIFF* tif, uint8* buf, tmsize_t cc)
+{
+	static const char module[]=""OJPEGDecodeRaw"";
+	OJPEGState* sp=(OJPEGState*)tif->tif_data;
+	uint8* m;
+	tmsize_t n;
+	uint8* oy;
+	uint8* ocb;
+	uint8* ocr;
+	uint8* p;
+	uint32 q;
+	uint8* r;
+	uint8 sx,sy;
+	if (cc%sp->bytes_per_line!=0)
+	{
+		TIFFErrorExt(tif->tif_clientdata,module,""Fractional scanline not read"");
+		return(0);
+	}
+	assert(cc>0);
+	m=buf;
+	n=cc;
+	do
+	{
+		if (sp->subsampling_convert_state==0)
+		{
+			if (jpeg_read_raw_data_encap(sp,&(sp->libjpeg_jpeg_decompress_struct),sp->subsampling_convert_ycbcrimage,sp->subsampling_ver*8)==0)
+				return(0);
+		}
+		oy=sp->subsampling_convert_ybuf+sp->subsampling_convert_state*sp->subsampling_ver*sp->subsampling_convert_ylinelen;
+		ocb=sp->subsampling_convert_cbbuf+sp->subsampling_convert_state*sp->subsampling_convert_clinelen;
+		ocr=sp->subsampling_convert_crbuf+sp->subsampling_convert_state*sp->subsampling_convert_clinelen;
+		p=m;
+		for (q=0; q<sp->subsampling_convert_clinelenout; q++)
+		{
+			r=oy;
+			for (sy=0; sy<sp->subsampling_ver; sy++)
+			{
+				for (sx=0; sx<sp->subsampling_hor; sx++)
+					*p++=*r++;
+				r+=sp->subsampling_convert_ylinelen-sp->subsampling_hor;
+			}
+			oy+=sp->subsampling_hor;
+			*p++=*ocb++;
+			*p++=*ocr++;
+		}
+		sp->subsampling_convert_state++;
+		if (sp->subsampling_convert_state==sp->subsampling_convert_clines)
+			sp->subsampling_convert_state=0;
+		m+=sp->bytes_per_line;
+		n-=sp->bytes_per_line;
+	} while(n>0);
+	return(1);
+}
+","static int
+OJPEGDecodeRaw(TIFF* tif, uint8* buf, tmsize_t cc)
+{
+	static const char module[]=""OJPEGDecodeRaw"";
+	OJPEGState* sp=(OJPEGState*)tif->tif_data;
+	uint8* m;
+	tmsize_t n;
+	uint8* oy;
+	uint8* ocb;
+	uint8* ocr;
+	uint8* p;
+	uint32 q;
+	uint8* r;
+	uint8 sx,sy;
+	if (sp->bytes_per_line == 0)
+        {
+            TIFFErrorExt(tif->tif_clientdata, module, ""Bytes per line is zero"");
+            return(0);
+        }
+	if (cc%sp->bytes_per_line!=0)
+	{
+		TIFFErrorExt(tif->tif_clientdata,module,""Fractional scanline not read"");
+		return(0);
+	}
+	assert(cc>0);
+	m=buf;
+	n=cc;
+	do
+	{
+		if (sp->subsampling_convert_state==0)
+		{
+			if (jpeg_read_raw_data_encap(sp,&(sp->libjpeg_jpeg_decompress_struct),sp->subsampling_convert_ycbcrimage,sp->subsampling_ver*8)==0)
+				return(0);
+		}
+		oy=sp->subsampling_convert_ybuf+sp->subsampling_convert_state*sp->subsampling_ver*sp->subsampling_convert_ylinelen;
+		ocb=sp->subsampling_convert_cbbuf+sp->subsampling_convert_state*sp->subsampling_convert_clinelen;
+		ocr=sp->subsampling_convert_crbuf+sp->subsampling_convert_state*sp->subsampling_convert_clinelen;
+		p=m;
+		for (q=0; q<sp->subsampling_convert_clinelenout; q++)
+		{
+			r=oy;
+			for (sy=0; sy<sp->subsampling_ver; sy++)
+			{
+				for (sx=0; sx<sp->subsampling_hor; sx++)
+					*p++=*r++;
+				r+=sp->subsampling_convert_ylinelen-sp->subsampling_hor;
+			}
+			oy+=sp->subsampling_hor;
+			*p++=*ocb++;
+			*p++=*ocr++;
+		}
+		sp->subsampling_convert_state++;
+		if (sp->subsampling_convert_state==sp->subsampling_convert_clines)
+			sp->subsampling_convert_state=0;
+		m+=sp->bytes_per_line;
+		n-=sp->bytes_per_line;
+	} while(n>0);
+	return(1);
+}
+",CWE-190,[15]
+"static int
+process_cu_tu_index (struct dwarf_section *section, int do_display)
+{
+  unsigned char *phdr = section->start;
+  unsigned char *limit = phdr + section->size;
+  unsigned char *phash;
+  unsigned char *pindex;
+  unsigned char *ppool;
+  unsigned int version;
+  unsigned int ncols = 0;
+  unsigned int nused;
+  unsigned int nslots;
+  unsigned int i;
+  unsigned int j;
+  dwarf_vma signature_high;
+  dwarf_vma signature_low;
+  char buf[64];
+
+  /* PR 17512: file: 002-168123-0.004.  */
+  if (phdr == NULL)
+    {
+      warn (_(""Section %s is empty\n""), section->name);
+      return 0;
+    }
+  /* PR 17512: file: 002-376-0.004.  */
+  if (section->size < 24)
+    {
+      warn (_(""Section %s is too small to contain a CU/TU header\n""),
+	    section->name);
+      return 0;
+    }
+
+  SAFE_BYTE_GET (version, phdr, 4, limit);
+  if (version >= 2)
+    SAFE_BYTE_GET (ncols, phdr + 4, 4, limit);
+  SAFE_BYTE_GET (nused, phdr + 8, 4, limit);
+  SAFE_BYTE_GET (nslots, phdr + 12, 4, limit);
+
+  phash = phdr + 16;
+  pindex = phash + nslots * 8;
+  ppool = pindex + nslots * 4;
+
+  /* PR 17531: file: 45d69832.  */
+  if (pindex < phash || ppool < phdr || (pindex == phash && nslots != 0))
+    {
+      warn (ngettext (""Section %s is too small for %d slot\n"",
+		      ""Section %s is too small for %d slots\n"",
+		      nslots),
+	    section->name, nslots);
+      return 0;
+    }
+
+  if (do_display)
+    {
+      introduce (section, FALSE);
+
+      printf (_(""  Version:                 %d\n""), version);
+      if (version >= 2)
+	printf (_(""  Number of columns:       %d\n""), ncols);
+      printf (_(""  Number of used entries:  %d\n""), nused);
+      printf (_(""  Number of slots:         %d\n\n""), nslots);
+    }
+
+  if (ppool > limit || ppool < phdr)
+    {
+      warn (_(""Section %s too small for %d hash table entries\n""),
+	    section->name, nslots);
+      return 0;
+    }
+
+  if (version == 1)
+    {
+      if (!do_display)
+	prealloc_cu_tu_list ((limit - ppool) / 4);
+      for (i = 0; i < nslots; i++)
+	{
+	  unsigned char *shndx_list;
+	  unsigned int shndx;
+
+	  SAFE_BYTE_GET64 (phash, &signature_high, &signature_low, limit);
+	  if (signature_high != 0 || signature_low != 0)
+	    {
+	      SAFE_BYTE_GET (j, pindex, 4, limit);
+	      shndx_list = ppool + j * 4;
+	      /* PR 17531: file: 705e010d.  */
+	      if (shndx_list < ppool)
+		{
+		  warn (_(""Section index pool located before start of section\n""));
+		  return 0;
+		}
+
+	      if (do_display)
+		printf (_(""  [%3d] Signature:  0x%s  Sections: ""),
+			i, dwarf_vmatoa64 (signature_high, signature_low,
+					   buf, sizeof (buf)));
+	      for (;;)
+		{
+		  if (shndx_list >= limit)
+		    {
+		      warn (_(""Section %s too small for shndx pool\n""),
+			    section->name);
+		      return 0;
+		    }
+		  SAFE_BYTE_GET (shndx, shndx_list, 4, limit);
+		  if (shndx == 0)
+		    break;
+		  if (do_display)
+		    printf ("" %d"", shndx);
+		  else
+		    add_shndx_to_cu_tu_entry (shndx);
+		  shndx_list += 4;
+		}
+	      if (do_display)
+		printf (""\n"");
+	      else
+		end_cu_tu_entry ();
+	    }
+	  phash += 8;
+	  pindex += 4;
+	}
+    }
+  else if (version == 2)
+    {
+      unsigned int val;
+      unsigned int dw_sect;
+      unsigned char *ph = phash;
+      unsigned char *pi = pindex;
+      unsigned char *poffsets = ppool + ncols * 4;
+      unsigned char *psizes = poffsets + nused * ncols * 4;
+      unsigned char *pend = psizes + nused * ncols * 4;
+      bfd_boolean is_tu_index;
+      struct cu_tu_set *this_set = NULL;
+      unsigned int row;
+      unsigned char *prow;
+
+      is_tu_index = strcmp (section->name, "".debug_tu_index"") == 0;
+
+      /* PR 17531: file: 0dd159bf.
+	 Check for wraparound with an overlarge ncols value.  */
+      if (poffsets < ppool || (unsigned int) ((poffsets - ppool) / 4) != ncols)
+	{
+	  warn (_(""Overlarge number of columns: %x\n""), ncols);
+	  return 0;
+	}
+
+      if (pend > limit)
+	{
+	  warn (_(""Section %s too small for offset and size tables\n""),
+		section->name);
+	  return 0;
+	}
+
+      if (do_display)
+	{
+	  printf (_(""  Offset table\n""));
+	  printf (""  slot  %-16s  "",
+		 is_tu_index ? _(""signature"") : _(""dwo_id""));
+	}
+      else
+	{
+	  if (is_tu_index)
+	    {
+	      tu_count = nused;
+	      tu_sets = xcalloc2 (nused, sizeof (struct cu_tu_set));
+	      this_set = tu_sets;
+	    }
+	  else
+	    {
+	      cu_count = nused;
+	      cu_sets = xcalloc2 (nused, sizeof (struct cu_tu_set));
+	      this_set = cu_sets;
+	    }
+	}
+
+      if (do_display)
+	{
+	  for (j = 0; j < ncols; j++)
+	    {
+	      SAFE_BYTE_GET (dw_sect, ppool + j * 4, 4, limit);
+	      printf ("" %8s"", get_DW_SECT_short_name (dw_sect));
+	    }
+	  printf (""\n"");
+	}
+
+      for (i = 0; i < nslots; i++)
+	{
+	  SAFE_BYTE_GET64 (ph, &signature_high, &signature_low, limit);
+
+	  SAFE_BYTE_GET (row, pi, 4, limit);
+	  if (row != 0)
+	    {
+	      /* PR 17531: file: a05f6ab3.  */
+	      if (row > nused)
+		{
+		  warn (_(""Row index (%u) is larger than number of used entries (%u)\n""),
+			row, nused);
+		  return 0;
+		}
+
+	      if (!do_display)
+		memcpy (&this_set[row - 1].signature, ph, sizeof (uint64_t));
+		
+	      prow = poffsets + (row - 1) * ncols * 4;
+	      /* PR 17531: file: b8ce60a8.  */
+	      if (prow < poffsets || prow > limit)
+		{
+		  warn (_(""Row index (%u) * num columns (%u) > space remaining in section\n""),
+			row, ncols);
+		  return 0;
+		}
+
+	      if (do_display)
+		printf (_(""  [%3d] 0x%s""),
+			i, dwarf_vmatoa64 (signature_high, signature_low,
+					   buf, sizeof (buf)));
+	      for (j = 0; j < ncols; j++)
+		{
+		  SAFE_BYTE_GET (val, prow + j * 4, 4, limit);
+		  if (do_display)
+		    printf ("" %8d"", val);
+		  else
+		    {
+		      SAFE_BYTE_GET (dw_sect, ppool + j * 4, 4, limit);
+
+		      /* PR 17531: file: 10796eb3.  */
+		      if (dw_sect >= DW_SECT_MAX)
+			warn (_(""Overlarge Dwarf section index detected: %u\n""), dw_sect);
+		      else
+			this_set [row - 1].section_offsets [dw_sect] = val;
+		    }
+		}
+
+	      if (do_display)
+		printf (""\n"");
+	    }
+	  ph += 8;
+	  pi += 4;
+	}
+
+      ph = phash;
+      pi = pindex;
+      if (do_display)
+	{
+	  printf (""\n"");
+	  printf (_(""  Size table\n""));
+	  printf (""  slot  %-16s  "",
+		 is_tu_index ? _(""signature"") : _(""dwo_id""));
+	}
+
+      for (j = 0; j < ncols; j++)
+	{
+	  SAFE_BYTE_GET (val, ppool + j * 4, 4, limit);
+	  if (do_display)
+	    printf ("" %8s"", get_DW_SECT_short_name (val));
+	}
+
+      if (do_display)
+	printf (""\n"");
+
+      for (i = 0; i < nslots; i++)
+	{
+	  SAFE_BYTE_GET64 (ph, &signature_high, &signature_low, limit);
+
+	  SAFE_BYTE_GET (row, pi, 4, limit);
+	  if (row != 0)
+	    {
+	      prow = psizes + (row - 1) * ncols * 4;
+
+	      if (do_display)
+		printf (_(""  [%3d] 0x%s""),
+			i, dwarf_vmatoa64 (signature_high, signature_low,
+					   buf, sizeof (buf)));
+
+	      for (j = 0; j < ncols; j++)
+		{
+		  SAFE_BYTE_GET (val, prow + j * 4, 4, limit);
+		  if (do_display)
+		    printf ("" %8d"", val);
+		  else
+		    {
+		      SAFE_BYTE_GET (dw_sect, ppool + j * 4, 4, limit);
+		      if (dw_sect >= DW_SECT_MAX)
+			warn (_(""Overlarge Dwarf section index detected: %u\n""), dw_sect);
+		      else
+		      this_set [row - 1].section_sizes [dw_sect] = val;
+		    }
+		}
+
+	      if (do_display)
+		printf (""\n"");
+	    }
+
+	  ph += 8;
+	  pi += 4;
+	}
+    }
+  else if (do_display)
+    printf (_(""  Unsupported version (%d)\n""), version);
+
+  if (do_display)
+      printf (""\n"");
+
+  return 1;
+}
+","static int
+process_cu_tu_index (struct dwarf_section *section, int do_display)
+{
+  unsigned char *phdr = section->start;
+  unsigned char *limit = phdr + section->size;
+  unsigned char *phash;
+  unsigned char *pindex;
+  unsigned char *ppool;
+  unsigned int version;
+  unsigned int ncols = 0;
+  unsigned int nused;
+  unsigned int nslots;
+  unsigned int i;
+  unsigned int j;
+  dwarf_vma signature_high;
+  dwarf_vma signature_low;
+  char buf[64];
+
+  /* PR 17512: file: 002-168123-0.004.  */
+  if (phdr == NULL)
+    {
+      warn (_(""Section %s is empty\n""), section->name);
+      return 0;
+    }
+  /* PR 17512: file: 002-376-0.004.  */
+  if (section->size < 24)
+    {
+      warn (_(""Section %s is too small to contain a CU/TU header\n""),
+	    section->name);
+      return 0;
+    }
+
+  SAFE_BYTE_GET (version, phdr, 4, limit);
+  if (version >= 2)
+    SAFE_BYTE_GET (ncols, phdr + 4, 4, limit);
+  SAFE_BYTE_GET (nused, phdr + 8, 4, limit);
+  SAFE_BYTE_GET (nslots, phdr + 12, 4, limit);
+
+  phash = phdr + 16;
+  pindex = phash + nslots * 8;
+  ppool = pindex + nslots * 4;
+
+  /* PR 17531: file: 45d69832.  */
+  if (pindex < phash || ppool < phdr || (pindex == phash && nslots != 0))
+    {
+      warn (ngettext (""Section %s is too small for %d slot\n"",
+		      ""Section %s is too small for %d slots\n"",
+		      nslots),
+	    section->name, nslots);
+      return 0;
+    }
+
+  if (do_display)
+    {
+      introduce (section, FALSE);
+
+      printf (_(""  Version:                 %d\n""), version);
+      if (version >= 2)
+	printf (_(""  Number of columns:       %d\n""), ncols);
+      printf (_(""  Number of used entries:  %d\n""), nused);
+      printf (_(""  Number of slots:         %d\n\n""), nslots);
+    }
+
+  if (ppool > limit || ppool < phdr)
+    {
+      warn (_(""Section %s too small for %d hash table entries\n""),
+	    section->name, nslots);
+      return 0;
+    }
+
+  if (version == 1)
+    {
+      if (!do_display)
+	prealloc_cu_tu_list ((limit - ppool) / 4);
+      for (i = 0; i < nslots; i++)
+	{
+	  unsigned char *shndx_list;
+	  unsigned int shndx;
+
+	  SAFE_BYTE_GET64 (phash, &signature_high, &signature_low, limit);
+	  if (signature_high != 0 || signature_low != 0)
+	    {
+	      SAFE_BYTE_GET (j, pindex, 4, limit);
+	      shndx_list = ppool + j * 4;
+	      /* PR 17531: file: 705e010d.  */
+	      if (shndx_list < ppool)
+		{
+		  warn (_(""Section index pool located before start of section\n""));
+		  return 0;
+		}
+
+	      if (do_display)
+		printf (_(""  [%3d] Signature:  0x%s  Sections: ""),
+			i, dwarf_vmatoa64 (signature_high, signature_low,
+					   buf, sizeof (buf)));
+	      for (;;)
+		{
+		  if (shndx_list >= limit)
+		    {
+		      warn (_(""Section %s too small for shndx pool\n""),
+			    section->name);
+		      return 0;
+		    }
+		  SAFE_BYTE_GET (shndx, shndx_list, 4, limit);
+		  if (shndx == 0)
+		    break;
+		  if (do_display)
+		    printf ("" %d"", shndx);
+		  else
+		    add_shndx_to_cu_tu_entry (shndx);
+		  shndx_list += 4;
+		}
+	      if (do_display)
+		printf (""\n"");
+	      else
+		end_cu_tu_entry ();
+	    }
+	  phash += 8;
+	  pindex += 4;
+	}
+    }
+  else if (version == 2)
+    {
+      unsigned int val;
+      unsigned int dw_sect;
+      unsigned char *ph = phash;
+      unsigned char *pi = pindex;
+      unsigned char *poffsets = ppool + ncols * 4;
+      unsigned char *psizes = poffsets + nused * ncols * 4;
+      unsigned char *pend = psizes + nused * ncols * 4;
+      bfd_boolean is_tu_index;
+      struct cu_tu_set *this_set = NULL;
+      unsigned int row;
+      unsigned char *prow;
+
+      is_tu_index = strcmp (section->name, "".debug_tu_index"") == 0;
+
+      /* PR 17531: file: 0dd159bf.
+	 Check for wraparound with an overlarge ncols value.  */
+      if (poffsets < ppool || (unsigned int) ((poffsets - ppool) / 4) != ncols)
+	{
+	  warn (_(""Overlarge number of columns: %x\n""), ncols);
+	  return 0;
+	}
+
+      if (pend > limit)
+	{
+	  warn (_(""Section %s too small for offset and size tables\n""),
+		section->name);
+	  return 0;
+	}
+
+      if (do_display)
+	{
+	  printf (_(""  Offset table\n""));
+	  printf (""  slot  %-16s  "",
+		 is_tu_index ? _(""signature"") : _(""dwo_id""));
+	}
+      else
+	{
+	  if (is_tu_index)
+	    {
+	      tu_count = nused;
+	      tu_sets = xcalloc2 (nused, sizeof (struct cu_tu_set));
+	      this_set = tu_sets;
+	    }
+	  else
+	    {
+	      cu_count = nused;
+	      cu_sets = xcalloc2 (nused, sizeof (struct cu_tu_set));
+	      this_set = cu_sets;
+	    }
+	}
+
+      if (do_display)
+	{
+	  for (j = 0; j < ncols; j++)
+	    {
+	      SAFE_BYTE_GET (dw_sect, ppool + j * 4, 4, limit);
+	      printf ("" %8s"", get_DW_SECT_short_name (dw_sect));
+	    }
+	  printf (""\n"");
+	}
+
+      for (i = 0; i < nslots; i++)
+	{
+	  SAFE_BYTE_GET64 (ph, &signature_high, &signature_low, limit);
+
+	  SAFE_BYTE_GET (row, pi, 4, limit);
+	  if (row != 0)
+	    {
+	      /* PR 17531: file: a05f6ab3.  */
+	      if (row > nused)
+		{
+		  warn (_(""Row index (%u) is larger than number of used entries (%u)\n""),
+			row, nused);
+		  return 0;
+		}
+
+	      if (!do_display)
+		memcpy (&this_set[row - 1].signature, ph, sizeof (uint64_t));
+	        {
+                 size_t num_copy = sizeof (uint64_t);
+
+                 if (ph + num_copy < limit)
+                   memcpy (&this_set[row - 1].signature, ph, num_copy);
+                 else
+                   {
+                     warn (_(""Signature (%p) extends beyond end of space in section\n""), ph);
+                     return 0;
+                   }
+               }
+		
+	      prow = poffsets + (row - 1) * ncols * 4;
+	      /* PR 17531: file: b8ce60a8.  */
+	      if (prow < poffsets || prow > limit)
+		{
+		  warn (_(""Row index (%u) * num columns (%u) > space remaining in section\n""),
+			row, ncols);
+		  return 0;
+		}
+
+	      if (do_display)
+		printf (_(""  [%3d] 0x%s""),
+			i, dwarf_vmatoa64 (signature_high, signature_low,
+					   buf, sizeof (buf)));
+	      for (j = 0; j < ncols; j++)
+		{
+		  SAFE_BYTE_GET (val, prow + j * 4, 4, limit);
+		  if (do_display)
+		    printf ("" %8d"", val);
+		  else
+		    {
+		      SAFE_BYTE_GET (dw_sect, ppool + j * 4, 4, limit);
+
+		      /* PR 17531: file: 10796eb3.  */
+		      if (dw_sect >= DW_SECT_MAX)
+			warn (_(""Overlarge Dwarf section index detected: %u\n""), dw_sect);
+		      else
+			this_set [row - 1].section_offsets [dw_sect] = val;
+		    }
+		}
+
+	      if (do_display)
+		printf (""\n"");
+	    }
+	  ph += 8;
+	  pi += 4;
+	}
+
+      ph = phash;
+      pi = pindex;
+      if (do_display)
+	{
+	  printf (""\n"");
+	  printf (_(""  Size table\n""));
+	  printf (""  slot  %-16s  "",
+		 is_tu_index ? _(""signature"") : _(""dwo_id""));
+	}
+
+      for (j = 0; j < ncols; j++)
+	{
+	  SAFE_BYTE_GET (val, ppool + j * 4, 4, limit);
+	  if (do_display)
+	    printf ("" %8s"", get_DW_SECT_short_name (val));
+	}
+
+      if (do_display)
+	printf (""\n"");
+
+      for (i = 0; i < nslots; i++)
+	{
+	  SAFE_BYTE_GET64 (ph, &signature_high, &signature_low, limit);
+
+	  SAFE_BYTE_GET (row, pi, 4, limit);
+	  if (row != 0)
+	    {
+	      prow = psizes + (row - 1) * ncols * 4;
+
+	      if (do_display)
+		printf (_(""  [%3d] 0x%s""),
+			i, dwarf_vmatoa64 (signature_high, signature_low,
+					   buf, sizeof (buf)));
+
+	      for (j = 0; j < ncols; j++)
+		{
+		  SAFE_BYTE_GET (val, prow + j * 4, 4, limit);
+		  if (do_display)
+		    printf ("" %8d"", val);
+		  else
+		    {
+		      SAFE_BYTE_GET (dw_sect, ppool + j * 4, 4, limit);
+		      if (dw_sect >= DW_SECT_MAX)
+			warn (_(""Overlarge Dwarf section index detected: %u\n""), dw_sect);
+		      else
+		      this_set [row - 1].section_sizes [dw_sect] = val;
+		    }
+		}
+
+	      if (do_display)
+		printf (""\n"");
+	    }
+
+	  ph += 8;
+	  pi += 4;
+	}
+    }
+  else if (do_display)
+    printf (_(""  Unsupported version (%d)\n""), version);
+
+  if (do_display)
+      printf (""\n"");
+
+  return 1;
+}
+",CWE-125,['?']
+"static void
+bytes_chunk_extract (uintmax_t k, uintmax_t n, char *buf, size_t bufsize,
+                     size_t initial_read, off_t file_size)
+{
+  off_t start;
+  off_t end;
+
+  assert (k && n && k <= n && n <= file_size);
+
+  start = (k - 1) * (file_size / n);
+  end = (k == n) ? file_size : k * (file_size / n);
+
+  if (initial_read != SIZE_MAX || start < initial_read)
+    {
+      memmove (buf, buf + start, initial_read - start);
+      initial_read -= start;
+    }
+  else
+    {
+      if (lseek (STDIN_FILENO, start, SEEK_CUR) < 0)
+        die (EXIT_FAILURE, errno, ""%s"", quotef (infile));
+      initial_read = SIZE_MAX;
+    }
+
+  while (start < end)
+    {
+      size_t n_read;
+      if (initial_read != SIZE_MAX)
+        {
+          n_read = initial_read;
+          initial_read = SIZE_MAX;
+        }
+      else
+        {
+          n_read = safe_read (STDIN_FILENO, buf, bufsize);
+          if (n_read == SAFE_READ_ERROR)
+            die (EXIT_FAILURE, errno, ""%s"", quotef (infile));
+        }
+      if (n_read == 0)
+        break; /* eof.  */
+      n_read = MIN (n_read, end - start);
+      if (full_write (STDOUT_FILENO, buf, n_read) != n_read
+          && ! ignorable (errno))
+        die (EXIT_FAILURE, errno, ""%s"", quotef (""-""));
+      start += n_read;
+    }
+}
+","static void
+bytes_chunk_extract (uintmax_t k, uintmax_t n, char *buf, size_t bufsize,
+                     size_t initial_read, off_t file_size)
+{
+  off_t start;
+  off_t end;
+
+  assert (k && n && k <= n && n <= file_size);
+
+  start = (k - 1) * (file_size / n);
+  end = (k == n) ? file_size : k * (file_size / n);
+
+  if (start < initial_read)
+    {
+      memmove (buf, buf + start, initial_read - start);
+      initial_read -= start;
+    }
+  else
+    {
+      if (lseek (STDIN_FILENO, start, SEEK_CUR) < 0)
+        die (EXIT_FAILURE, errno, ""%s"", quotef (infile));
+      initial_read = SIZE_MAX;
+    }
+
+  while (start < end)
+    {
+      size_t n_read;
+      if (initial_read != SIZE_MAX)
+        {
+          n_read = initial_read;
+          initial_read = SIZE_MAX;
+        }
+      else
+        {
+          n_read = safe_read (STDIN_FILENO, buf, bufsize);
+          if (n_read == SAFE_READ_ERROR)
+            die (EXIT_FAILURE, errno, ""%s"", quotef (infile));
+        }
+      if (n_read == 0)
+        break; /* eof.  */
+      n_read = MIN (n_read, end - start);
+      if (full_write (STDOUT_FILENO, buf, n_read) != n_read
+          && ! ignorable (errno))
+        die (EXIT_FAILURE, errno, ""%s"", quotef (""-""));
+      start += n_read;
+    }
+}
+",CWE-787,"[13, 15]"
+"static void
+init_parameters (int number_of_files)
+{
+  int chars_used_by_number = 0;
+
+  lines_per_body = lines_per_page - lines_per_header - lines_per_footer;
+  if (lines_per_body <= 0)
+    {
+      extremities = false;
+      keep_FF = true;
+    }
+  if (extremities == false)
+    lines_per_body = lines_per_page;
+
+  if (double_space)
+    lines_per_body = lines_per_body / 2;
+
+  /* If input is stdin, cannot print parallel files.  BSD dumps core
+     on this. */
+  if (number_of_files == 0)
+    parallel_files = false;
+
+  if (parallel_files)
+    columns = number_of_files;
+
+  /* One file, multi columns down: -b option is set to get a consistent
+     formulation with ""FF set by hand"" in input files. */
+  if (storing_columns)
+    balance_columns = true;
+
+  /* Tabification is assumed for multiple columns. */
+  if (columns > 1)
+    {
+      if (!use_col_separator)
+        {
+          /* Use default separator */
+          if (join_lines)
+            col_sep_string = line_separator;
+          else
+            col_sep_string = column_separator;
+
+          col_sep_length = 1;
+          use_col_separator = true;
+        }
+      /* It's rather pointless to define a TAB separator with column
+         alignment */
+      else if (!join_lines && *col_sep_string == '\t') // In this case, col_sep_length must be 1.
+        col_sep_string = column_separator;
+
+      truncate_lines = true;
+      tabify_output = true;
+    }
+  else
+    storing_columns = false;
+
+  /* -J dominates -w in any case */
+  if (join_lines)
+    truncate_lines = false;
+
+  if (numbered_lines)
+    {
+      int chars_per_default_tab = 8;
+
+      line_count = start_line_num;
+
+      /* To allow input tab-expansion (-e sensitive) use:
+         if (number_separator == input_tab_char)
+           number_width = chars_per_number
+             + TAB_WIDTH (chars_per_input_tab, chars_per_number);   */
+
+      /* Estimate chars_per_text without any margin and keep it constant. */
+      if (number_separator == '\t')
+        number_width = (chars_per_number
+                        + TAB_WIDTH (chars_per_default_tab, chars_per_number));
+      else
+        number_width = chars_per_number + 1;
+
+      /* The number is part of the column width unless we are
+         printing files in parallel. */
+      if (parallel_files)
+        chars_used_by_number = number_width;
+    }
+
+  int sep_chars, useful_chars;
+  if (INT_MULTIPLY_WRAPV (columns - 1, col_sep_length, &sep_chars))
+    sep_chars = INT_MAX;
+  if (INT_SUBTRACT_WRAPV (chars_per_line - chars_used_by_number, sep_chars,
+                          &useful_chars))
+    useful_chars = 0;
+  chars_per_column = useful_chars / columns;
+
+  if (chars_per_column < 1)
+    die (EXIT_FAILURE, 0, _(""page width too narrow""));
+
+  if (numbered_lines)
+    {
+      free (number_buff);
+      number_buff = xmalloc (MAX (chars_per_number,
+                                  INT_STRLEN_BOUND (line_number)) + 1);
+    }
+
+  /* Pick the maximum between the tab width and the width of an
+     escape sequence.
+     The width of an escape sequence (4) isn't the lower limit any longer.
+     We've to use 8 as the lower limit, if we use chars_per_default_tab = 8
+     to expand a tab which is not an input_tab-char. */
+  free (clump_buff);
+  clump_buff = xmalloc (MAX (8, chars_per_input_tab));
+}
+","static void
+init_parameters (int number_of_files)
+{
+  int chars_used_by_number = 0;
+
+  lines_per_body = lines_per_page - lines_per_header - lines_per_footer;
+  if (lines_per_body <= 0)
+    {
+      extremities = false;
+      keep_FF = true;
+    }
+  if (extremities == false)
+    lines_per_body = lines_per_page;
+
+  if (double_space)
+    lines_per_body = lines_per_body / 2;
+
+  /* If input is stdin, cannot print parallel files.  BSD dumps core
+     on this. */
+  if (number_of_files == 0)
+    parallel_files = false;
+
+  if (parallel_files)
+    columns = number_of_files;
+
+  /* One file, multi columns down: -b option is set to get a consistent
+     formulation with ""FF set by hand"" in input files. */
+  if (storing_columns)
+    balance_columns = true;
+
+  /* Tabification is assumed for multiple columns. */
+  if (columns > 1)
+    {
+      if (!use_col_separator)
+        {
+          /* Use default separator */
+          if (join_lines)
+            col_sep_string = line_separator;
+          else
+            col_sep_string = column_separator;
+
+          col_sep_length = 1;
+          use_col_separator = true;
+        }
+      /* It's rather pointless to define a TAB separator with column
+         alignment */
+      else if (!join_lines && col_sep_length == 1 && *col_sep_string == '\t')
+        col_sep_string = column_separator;
+
+      truncate_lines = true;
+      tabify_output = true;
+    }
+  else
+    storing_columns = false;
+
+  /* -J dominates -w in any case */
+  if (join_lines)
+    truncate_lines = false;
+
+  if (numbered_lines)
+    {
+      int chars_per_default_tab = 8;
+
+      line_count = start_line_num;
+
+      /* To allow input tab-expansion (-e sensitive) use:
+         if (number_separator == input_tab_char)
+           number_width = chars_per_number
+             + TAB_WIDTH (chars_per_input_tab, chars_per_number);   */
+
+      /* Estimate chars_per_text without any margin and keep it constant. */
+      if (number_separator == '\t')
+        number_width = (chars_per_number
+                        + TAB_WIDTH (chars_per_default_tab, chars_per_number));
+      else
+        number_width = chars_per_number + 1;
+
+      /* The number is part of the column width unless we are
+         printing files in parallel. */
+      if (parallel_files)
+        chars_used_by_number = number_width;
+    }
+
+  int sep_chars, useful_chars;
+  if (INT_MULTIPLY_WRAPV (columns - 1, col_sep_length, &sep_chars))
+    sep_chars = INT_MAX;
+  if (INT_SUBTRACT_WRAPV (chars_per_line - chars_used_by_number, sep_chars,
+                          &useful_chars))
+    useful_chars = 0;
+  chars_per_column = useful_chars / columns;
+
+  if (chars_per_column < 1)
+    die (EXIT_FAILURE, 0, _(""page width too narrow""));
+
+  if (numbered_lines)
+    {
+      free (number_buff);
+      number_buff = xmalloc (MAX (chars_per_number,
+                                  INT_STRLEN_BOUND (line_number)) + 1);
+    }
+
+  /* Pick the maximum between the tab width and the width of an
+     escape sequence.
+     The width of an escape sequence (4) isn't the lower limit any longer.
+     We've to use 8 as the lower limit, if we use chars_per_default_tab = 8
+     to expand a tab which is not an input_tab-char. */
+  free (clump_buff);
+  clump_buff = xmalloc (MAX (8, chars_per_input_tab));
+}
+",CWE-125,['?']
+"void
+PSDataColorContig(FILE* fd, TIFF* tif, uint32 w, uint32 h, int nc)
+{
+	uint32 row;
+	int breaklen = MAXLINE;
+	int es = samplesperpixel - nc;
+	tsize_t cc;
+	unsigned char *tf_buf;
+	unsigned char *cp, c;
+	(void) w;
+	tf_buf = (unsigned char *) _TIFFmalloc(tf_bytesperrow);
+	if (tf_buf == NULL) {
+		TIFFError(filename, ""No space for scanline buffer"");
+		return;
+	}
+	for (row = 0; row < h; row++) {
+		if (TIFFReadScanline(tif, tf_buf, row, 0) < 0)
+			break;
+		cp = tf_buf;
+		/*
+		 * for 16 bits, the two bytes must be most significant
+		 * byte first
+		 */
+		if (bitspersample == 16 && !HOST_BIGENDIAN) {
+			PS_FlipBytes(cp, tf_bytesperrow);
+		}
+		if (alpha) {
+			int adjust;
+			cc = 0;
+			for (; cc < tf_bytesperrow; cc += samplesperpixel) {
+				DOBREAK(breaklen, nc, fd);
+				/*
+				 * For images with alpha, matte against
+				 * a white background; i.e.
+				 *    Cback * (1 - Aimage)
+				 * where Cback = 1.
+				 */
+				adjust = 255 - cp[nc];
+				switch (nc) {
+				case 4: c = *cp++ + adjust; PUTHEX(c,fd);
+				case 3: c = *cp++ + adjust; PUTHEX(c,fd);
+				case 2: c = *cp++ + adjust; PUTHEX(c,fd);
+				case 1: c = *cp++ + adjust; PUTHEX(c,fd);
+				}
+				cp += es;
+			}
+		} else {
+			cc = 0;
+			for (; cc < tf_bytesperrow; cc += samplesperpixel) {
+				DOBREAK(breaklen, nc, fd);
+				switch (nc) {
+				case 4: c = *cp++; PUTHEX(c,fd);
+				case 3: c = *cp++; PUTHEX(c,fd);
+				case 2: c = *cp++; PUTHEX(c,fd);
+				case 1: c = *cp++; PUTHEX(c,fd);
+				}
+				cp += es;
+			}
+		}
+	}
+	_TIFFfree((char *) tf_buf);
+}
+","void
+PSDataColorContig(FILE* fd, TIFF* tif, uint32 w, uint32 h, int nc)
+{
+	uint32 row;
+	int breaklen = MAXLINE;
+	int es = samplesperpixel - nc;
+	tsize_t cc;
+	unsigned char *tf_buf;
+	unsigned char *cp, c;
+	(void) w;
+	if (es<=0)
+		return;
+	tf_buf = (unsigned char *) _TIFFmalloc(tf_bytesperrow);
+	if (tf_buf == NULL) {
+		TIFFError(filename, ""No space for scanline buffer"");
+		return;
+	}
+	for (row = 0; row < h; row++) {
+		if (TIFFReadScanline(tif, tf_buf, row, 0) < 0)
+			break;
+		cp = tf_buf;
+		/*
+		 * for 16 bits, the two bytes must be most significant
+		 * byte first
+		 */
+		if (bitspersample == 16 && !HOST_BIGENDIAN) {
+			PS_FlipBytes(cp, tf_bytesperrow);
+		}
+		if (alpha) {
+			int adjust;
+			cc = 0;
+			for (; cc < tf_bytesperrow; cc += samplesperpixel) {
+				DOBREAK(breaklen, nc, fd);
+				/*
+				 * For images with alpha, matte against
+				 * a white background; i.e.
+				 *    Cback * (1 - Aimage)
+				 * where Cback = 1.
+				 */
+				adjust = 255 - cp[nc];
+				switch (nc) {
+				case 4: c = *cp++ + adjust; PUTHEX(c,fd);
+				case 3: c = *cp++ + adjust; PUTHEX(c,fd);
+				case 2: c = *cp++ + adjust; PUTHEX(c,fd);
+				case 1: c = *cp++ + adjust; PUTHEX(c,fd);
+				}
+				cp += es;
+			}
+		} else {
+			cc = 0;
+			for (; cc < tf_bytesperrow; cc += samplesperpixel) {
+				DOBREAK(breaklen, nc, fd);
+				switch (nc) {
+				case 4: c = *cp++; PUTHEX(c,fd);
+				case 3: c = *cp++; PUTHEX(c,fd);
+				case 2: c = *cp++; PUTHEX(c,fd);
+				case 1: c = *cp++; PUTHEX(c,fd);
+				}
+				cp += es;
+			}
+		}
+	}
+	_TIFFfree((char *) tf_buf);
+}
+",CWE-787,"[40, 41, 42, 43, 45, 52, 53, 54, 55, 57]"
+"static const xmlChar *
+htmlParseNameComplex(xmlParserCtxtPtr ctxt) {
+    int len = 0, l;
+    int c;
+    int count = 0;
+
+    /*
+     * Handler for more complex cases
+     */
+    GROW;
+    c = CUR_CHAR(l);
+    if ((c == ' ') || (c == '>') || (c == '/') || /* accelerators */
+	(!IS_LETTER(c) && (c != '_') &&
+         (c != ':'))) {
+	return(NULL);
+    }
+
+    while ((c != ' ') && (c != '>') && (c != '/') && /* test bigname.xml */
+	   ((IS_LETTER(c)) || (IS_DIGIT(c)) ||
+            (c == '.') || (c == '-') ||
+	    (c == '_') || (c == ':') ||
+	    (IS_COMBINING(c)) ||
+	    (IS_EXTENDER(c)))) {
+	if (count++ > 100) {
+	    count = 0;
+	    GROW;
+	}
+	len += l;
+	NEXTL(l);
+	c = CUR_CHAR(l);
+    }
+    return(xmlDictLookup(ctxt->dict, ctxt->input->cur - len, len)); 
+}
+","static const xmlChar *
+htmlParseNameComplex(xmlParserCtxtPtr ctxt) {
+    int len = 0, l;
+    int c;
+    int count = 0;
+
+    /*
+     * Handler for more complex cases
+     */
+    GROW;
+    c = CUR_CHAR(l);
+    if ((c == ' ') || (c == '>') || (c == '/') || /* accelerators */
+	(!IS_LETTER(c) && (c != '_') &&
+         (c != ':'))) {
+	return(NULL);
+    }
+
+    while ((c != ' ') && (c != '>') && (c != '/') && /* test bigname.xml */
+	   ((IS_LETTER(c)) || (IS_DIGIT(c)) ||
+            (c == '.') || (c == '-') ||
+	    (c == '_') || (c == ':') ||
+	    (IS_COMBINING(c)) ||
+	    (IS_EXTENDER(c)))) {
+	if (count++ > 100) {
+	    count = 0;
+	    GROW;
+	}
+	len += l;
+	NEXTL(l);
+	c = CUR_CHAR(l);
+    }
+    if (ctxt->input->base > ctxt->input->cur - len)
+       return(NULL);
+    return(xmlDictLookup(ctxt->dict, ctxt->input->cur - len, len)); 
+}
+",CWE-125,[32]
+"int
+main(int argc, char* argv[])
+{
+	TIFF *in, *out;
+	int c;
+#if !HAVE_DECL_OPTARG
+	extern int optind;
+	extern char *optarg;
+#endif
+
+	while ((c = getopt(argc, argv, ""c:h:r:v:z"")) != -1)
+		switch (c) {
+		case 'c':
+			if (streq(optarg, ""none""))
+			    compression = COMPRESSION_NONE;
+			else if (streq(optarg, ""packbits""))
+			    compression = COMPRESSION_PACKBITS;
+			else if (streq(optarg, ""lzw""))
+			    compression = COMPRESSION_LZW;
+			else if (streq(optarg, ""jpeg""))
+			    compression = COMPRESSION_JPEG;
+			else if (streq(optarg, ""zip""))
+			    compression = COMPRESSION_ADOBE_DEFLATE;
+			else
+			    usage(-1);
+			break;
+		case 'h':
+			horizSubSampling = atoi(optarg);
+			break;
+		case 'v':
+			vertSubSampling = atoi(optarg);
+			break;
+		case 'r':
+			rowsperstrip = atoi(optarg);
+			break;
+		case 'z':	/* CCIR Rec 601-1 w/ headroom/footroom */
+			refBlackWhite[0] = 16.;
+			refBlackWhite[1] = 235.;
+			refBlackWhite[2] = 128.;
+			refBlackWhite[3] = 240.;
+			refBlackWhite[4] = 128.;
+			refBlackWhite[5] = 240.;
+			break;
+		case '?':
+			usage(0);
+			/*NOTREACHED*/
+		}
+	if (argc - optind < 2)
+		usage(-1);
+	out = TIFFOpen(argv[argc-1], ""w"");
+	if (out == NULL)
+		return (-2);
+	setupLumaTables();
+	for (; optind < argc-1; optind++) {
+		in = TIFFOpen(argv[optind], ""r"");
+		if (in != NULL) {
+			do {
+				if (!tiffcvt(in, out) ||
+				    !TIFFWriteDirectory(out)) {
+					(void) TIFFClose(out);
+					return (1);
+				}
+			} while (TIFFReadDirectory(in));
+			(void) TIFFClose(in);
+		}
+	}
+	(void) TIFFClose(out);
+	return (0);
+}
+","int
+main(int argc, char* argv[])
+{
+	TIFF *in, *out;
+	int c;
+#if !HAVE_DECL_OPTARG
+	extern int optind;
+	extern char *optarg;
+#endif
+
+	while ((c = getopt(argc, argv, ""c:h:r:v:z"")) != -1)
+		switch (c) {
+		case 'c':
+			if (streq(optarg, ""none""))
+			    compression = COMPRESSION_NONE;
+			else if (streq(optarg, ""packbits""))
+			    compression = COMPRESSION_PACKBITS;
+			else if (streq(optarg, ""lzw""))
+			    compression = COMPRESSION_LZW;
+			else if (streq(optarg, ""jpeg""))
+			    compression = COMPRESSION_JPEG;
+			else if (streq(optarg, ""zip""))
+			    compression = COMPRESSION_ADOBE_DEFLATE;
+			else
+			    usage(-1);
+			break;
+		case 'h':
+			horizSubSampling = atoi(optarg);
+			if( horizSubSampling != 1 && horizSubSampling != 2 && horizSubSampling != 4 )
+		                usage(-1);
+			break;
+		case 'v':
+			vertSubSampling = atoi(optarg);
+			if( vertSubSampling != 1 && vertSubSampling != 2 && vertSubSampling != 4 )
+		                usage(-1);
+			break;
+		case 'r':
+			rowsperstrip = atoi(optarg);
+			break;
+		case 'z':	/* CCIR Rec 601-1 w/ headroom/footroom */
+			refBlackWhite[0] = 16.;
+			refBlackWhite[1] = 235.;
+			refBlackWhite[2] = 128.;
+			refBlackWhite[3] = 240.;
+			refBlackWhite[4] = 128.;
+			refBlackWhite[5] = 240.;
+			break;
+		case '?':
+			usage(0);
+			/*NOTREACHED*/
+		}
+	if (argc - optind < 2)
+		usage(-1);
+	out = TIFFOpen(argv[argc-1], ""w"");
+	if (out == NULL)
+		return (-2);
+	setupLumaTables();
+	for (; optind < argc-1; optind++) {
+		in = TIFFOpen(argv[optind], ""r"");
+		if (in != NULL) {
+			do {
+				if (!tiffcvt(in, out) ||
+				    !TIFFWriteDirectory(out)) {
+					(void) TIFFClose(out);
+					return (1);
+				}
+			} while (TIFFReadDirectory(in));
+			(void) TIFFClose(in);
+		}
+	}
+	(void) TIFFClose(out);
+	return (0);
+}
+",CWE-190,['?']
+"GLOBAL(djpeg_dest_ptr)
+jinit_write_bmp(j_decompress_ptr cinfo, boolean is_os2,
+                boolean use_inversion_array)
+{
+  bmp_dest_ptr dest;
+  JDIMENSION row_width;
+
+  /* Create module interface object, fill in method pointers */
+  dest = (bmp_dest_ptr)
+    (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_IMAGE,
+                                sizeof(bmp_dest_struct));
+  dest->pub.start_output = start_output_bmp;
+  dest->pub.finish_output = finish_output_bmp;
+  dest->pub.calc_buffer_dimensions = NULL;
+  dest->is_os2 = is_os2;
+
+  if (cinfo->out_color_space == JCS_GRAYSCALE) {
+    dest->pub.put_pixel_rows = put_gray_rows;
+  } else if (IsExtRGB(cinfo->out_color_space)) {
+    if (cinfo->quantize_colors)
+      dest->pub.put_pixel_rows = put_gray_rows;
+    else
+      dest->pub.put_pixel_rows = put_pixel_rows;
+  } else if (cinfo->out_color_space == JCS_RGB565 ||  
+             cinfo->out_color_space == JCS_CMYK) {
+    dest->pub.put_pixel_rows = put_pixel_rows;
+  } else {
+    ERREXIT(cinfo, JERR_BMP_COLORSPACE);
+  }
+
+  /* Calculate output image dimensions so we can allocate space */
+  jpeg_calc_output_dimensions(cinfo);
+
+  /* Determine width of rows in the BMP file (padded to 4-byte boundary). */
+  if (cinfo->out_color_space == JCS_RGB565) {
+    row_width = cinfo->output_width * 2;
+    dest->row_width = dest->data_width = cinfo->output_width * 3;
+    while ((row_width & 3) != 0) row_width++;
+  } else if (!cinfo->quantize_colors &&
+             (IsExtRGB(cinfo->out_color_space) ||
+              cinfo->out_color_space == JCS_CMYK)) {
+    row_width = cinfo->output_width * cinfo->output_components;
+    dest->row_width = dest->data_width = cinfo->output_width * 3;
+  } else {
+    row_width = cinfo->output_width * cinfo->output_components;
+    dest->row_width = dest->data_width = row_width;
+  }
+  while ((dest->row_width & 3) != 0) dest->row_width++;
+  dest->pad_bytes = (int)(dest->row_width - dest->data_width);
+
+
+  if (use_inversion_array) {
+    /* Allocate space for inversion array, prepare for write pass */
+    dest->whole_image = (*cinfo->mem->request_virt_sarray)
+      ((j_common_ptr)cinfo, JPOOL_IMAGE, FALSE,
+       dest->row_width, cinfo->output_height, (JDIMENSION)1);
+    dest->cur_output_row = 0;
+    if (cinfo->progress != NULL) {
+      cd_progress_ptr progress = (cd_progress_ptr)cinfo->progress;
+      progress->total_extra_passes++; /* count file input as separate pass */
+    }
+  } else {
+    dest->iobuffer = (JSAMPLE *)(*cinfo->mem->alloc_small)
+      ((j_common_ptr)cinfo, JPOOL_IMAGE, dest->row_width);
+  }
+  dest->use_inversion_array = use_inversion_array;
+
+  /* Create decompressor output buffer. */
+  dest->pub.buffer = (*cinfo->mem->alloc_sarray)
+    ((j_common_ptr)cinfo, JPOOL_IMAGE, row_width, (JDIMENSION)1);
+  dest->pub.buffer_height = 1;
+
+  return (djpeg_dest_ptr)dest;
+}
+","GLOBAL(djpeg_dest_ptr)
+jinit_write_bmp(j_decompress_ptr cinfo, boolean is_os2,
+                boolean use_inversion_array)
+{
+  bmp_dest_ptr dest;
+  JDIMENSION row_width;
+
+  /* Create module interface object, fill in method pointers */
+  dest = (bmp_dest_ptr)
+    (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_IMAGE,
+                                sizeof(bmp_dest_struct));
+  dest->pub.start_output = start_output_bmp;
+  dest->pub.finish_output = finish_output_bmp;
+  dest->pub.calc_buffer_dimensions = NULL;
+  dest->is_os2 = is_os2;
+
+  if (cinfo->out_color_space == JCS_GRAYSCALE) {
+    dest->pub.put_pixel_rows = put_gray_rows;
+  } else if (IsExtRGB(cinfo->out_color_space)) {
+    if (cinfo->quantize_colors)
+      dest->pub.put_pixel_rows = put_gray_rows;
+    else
+      dest->pub.put_pixel_rows = put_pixel_rows;
+    } else if (!cinfo->quantize_colors &&
+             (cinfo->out_color_space == JCS_RGB565 ||
+              cinfo->out_color_space == JCS_CMYK)) {
+    dest->pub.put_pixel_rows = put_pixel_rows;
+  } else {
+    ERREXIT(cinfo, JERR_BMP_COLORSPACE);
+  }
+
+  /* Calculate output image dimensions so we can allocate space */
+  jpeg_calc_output_dimensions(cinfo);
+
+  /* Determine width of rows in the BMP file (padded to 4-byte boundary). */
+  if (cinfo->out_color_space == JCS_RGB565) {
+    row_width = cinfo->output_width * 2;
+    dest->row_width = dest->data_width = cinfo->output_width * 3;
+    while ((row_width & 3) != 0) row_width++;
+  } else if (!cinfo->quantize_colors &&
+             (IsExtRGB(cinfo->out_color_space) ||
+              cinfo->out_color_space == JCS_CMYK)) {
+    row_width = cinfo->output_width * cinfo->output_components;
+    dest->row_width = dest->data_width = cinfo->output_width * 3;
+  } else {
+    row_width = cinfo->output_width * cinfo->output_components;
+    dest->row_width = dest->data_width = row_width;
+  }
+  while ((dest->row_width & 3) != 0) dest->row_width++;
+  dest->pad_bytes = (int)(dest->row_width - dest->data_width);
+
+
+  if (use_inversion_array) {
+    /* Allocate space for inversion array, prepare for write pass */
+    dest->whole_image = (*cinfo->mem->request_virt_sarray)
+      ((j_common_ptr)cinfo, JPOOL_IMAGE, FALSE,
+       dest->row_width, cinfo->output_height, (JDIMENSION)1);
+    dest->cur_output_row = 0;
+    if (cinfo->progress != NULL) {
+      cd_progress_ptr progress = (cd_progress_ptr)cinfo->progress;
+      progress->total_extra_passes++; /* count file input as separate pass */
+    }
+  } else {
+    dest->iobuffer = (JSAMPLE *)(*cinfo->mem->alloc_small)
+      ((j_common_ptr)cinfo, JPOOL_IMAGE, dest->row_width);
+  }
+  dest->use_inversion_array = use_inversion_array;
+
+  /* Create decompressor output buffer. */
+  dest->pub.buffer = (*cinfo->mem->alloc_sarray)
+    ((j_common_ptr)cinfo, JPOOL_IMAGE, row_width, (JDIMENSION)1);
+  dest->pub.buffer_height = 1;
+
+  return (djpeg_dest_ptr)dest;
+}
+",CWE-125,['?']
+"int
+main (int argc, char **argv)
+{
+  int limit;
+
+  char *sieve;
+  size_t size, i;
+
+  struct prime *prime_list;
+  unsigned nprimes;
+
+  if (argc != 2)
+    {
+      fprintf (stderr, ""Usage: %s LIMIT\n""
+               ""Produces a list of odd primes <= LIMIT\n"", argv[0]);
+      return EXIT_FAILURE;
+    }
+  limit = atoi (argv[1]);
+  if (limit < 3)
+    return EXIT_SUCCESS;
+
+  /* Make limit odd */
+  if ( !(limit & 1))
+    limit--;
+
+  size = (limit-1)/2;
+  /* sieve[i] represents 3+2*i */
+  sieve = xalloc (size);
+  memset (sieve, 1, size);
+
+  prime_list = xalloc (size * sizeof (*prime_list));
+  nprimes = 0;
+
+  for (i = 0; i < size;)
+    {
+      unsigned p = 3+2*i;
+      unsigned j;
+
+      process_prime (&prime_list[nprimes++], p);
+
+      for (j = (p*p - 3)/2; j < size; j+= p)
+        sieve[j] = 0;
+
+      while (i < size && sieve[++i] == 0)
+        ;
+    }
+
+  output_primes (prime_list, nprimes);
+
+  if (ferror (stdout) + fclose (stdout))
+    {
+      fprintf (stderr, ""write error: %s\n"", strerror (errno));
+      return EXIT_FAILURE;
+    }
+
+  return EXIT_SUCCESS;
+}
+","int
+main (int argc, char **argv)
+{
+  int limit;
+
+  char *sieve;
+  size_t size, i;
+
+  struct prime *prime_list;
+  unsigned nprimes;
+
+  if (argc != 2)
+    {
+      fprintf (stderr, ""Usage: %s LIMIT\n""
+               ""Produces a list of odd primes <= LIMIT\n"", argv[0]);
+      return EXIT_FAILURE;
+    }
+  limit = atoi (argv[1]);
+  if (limit < 3)
+    return EXIT_SUCCESS;
+
+  /* Make limit odd */
+  if ( !(limit & 1))
+    limit--;
+
+  size = (limit-1)/2;
+  /* sieve[i] represents 3+2*i */
+  sieve = xalloc (size);
+  memset (sieve, 1, size);
+
+  prime_list = xalloc (size * sizeof (*prime_list));
+  nprimes = 0;
+
+  for (i = 0; i < size;)
+    {
+      unsigned p = 3+2*i;
+      unsigned j;
+
+      process_prime (&prime_list[nprimes++], p);
+
+      for (j = (p*p - 3)/2; j < size; j+= p)
+        sieve[j] = 0;
+
+      while (++i < size && sieve[i] == 0)
+        ;
+    }
+
+  output_primes (prime_list, nprimes);
+
+  if (ferror (stdout) + fclose (stdout))
+    {
+      fprintf (stderr, ""write error: %s\n"", strerror (errno));
+      return EXIT_FAILURE;
+    }
+
+  return EXIT_SUCCESS;
+}
+",CWE-125,[44]
+"get_sos (j_decompress_ptr cinfo)
+/* Process a SOS marker */
+{
+  INT32 length;
+  int i, ci, n, c, cc;
+  jpeg_component_info * compptr;
+  INPUT_VARS(cinfo);
+
+  if (! cinfo->marker->saw_SOF)
+    ERREXIT(cinfo, JERR_SOS_NO_SOF);
+
+  INPUT_2BYTES(cinfo, length, return FALSE);
+
+  INPUT_BYTE(cinfo, n, return FALSE); /* Number of components */
+
+  TRACEMS1(cinfo, 1, JTRC_SOS, n);
+
+  if (length != (n * 2 + 6) || n < 1 || n > MAX_COMPS_IN_SCAN)
+    ERREXIT(cinfo, JERR_BAD_LENGTH);
+
+  cinfo->comps_in_scan = n;
+
+  /* Collect the component-spec parameters */
+
+  for (i = 0; i < cinfo->num_components; i++)
+    cinfo->cur_comp_info[i] = NULL; // cinfo->cur_comp_info has length MAX_COMPS_IN_SCAN
+
+  for (i = 0; i < n; i++) {
+    INPUT_BYTE(cinfo, cc, return FALSE);
+    INPUT_BYTE(cinfo, c, return FALSE);
+    
+    for (ci = 0, compptr = cinfo->comp_info; ci < cinfo->num_components;
+	 ci++, compptr++) {
+      if (cc == compptr->component_id && !cinfo->cur_comp_info[ci]) // cinfo->cur_comp_info has length MAX_COMPS_IN_SCAN
+	goto id_found;
+    }
+
+    ERREXIT1(cinfo, JERR_BAD_COMPONENT_ID, cc);
+
+  id_found:
+
+    cinfo->cur_comp_info[i] = compptr;
+    compptr->dc_tbl_no = (c >> 4) & 15;
+    compptr->ac_tbl_no = (c     ) & 15;
+    
+    TRACEMS3(cinfo, 1, JTRC_SOS_COMPONENT, cc,
+	     compptr->dc_tbl_no, compptr->ac_tbl_no);
+  }
+
+  /* Collect the additional scan parameters Ss, Se, Ah/Al. */
+  INPUT_BYTE(cinfo, c, return FALSE);
+  cinfo->Ss = c;
+  INPUT_BYTE(cinfo, c, return FALSE);
+  cinfo->Se = c;
+  INPUT_BYTE(cinfo, c, return FALSE);
+  cinfo->Ah = (c >> 4) & 15;
+  cinfo->Al = (c     ) & 15;
+
+  TRACEMS4(cinfo, 1, JTRC_SOS_PARAMS, cinfo->Ss, cinfo->Se,
+	   cinfo->Ah, cinfo->Al);
+
+  /* Prepare to scan data & restart markers */
+  cinfo->marker->next_restart_num = 0;
+
+  /* Count another SOS marker */
+  cinfo->input_scan_number++;
+
+  INPUT_SYNC(cinfo);
+  return TRUE;
+}
+","get_sos (j_decompress_ptr cinfo)
+/* Process a SOS marker */
+{
+  INT32 length;
+  int i, ci, n, c, cc;
+  jpeg_component_info * compptr;
+  INPUT_VARS(cinfo);
+
+  if (! cinfo->marker->saw_SOF)
+    ERREXIT(cinfo, JERR_SOS_NO_SOF);
+
+  INPUT_2BYTES(cinfo, length, return FALSE);
+
+  INPUT_BYTE(cinfo, n, return FALSE); /* Number of components */
+
+  TRACEMS1(cinfo, 1, JTRC_SOS, n);
+
+  if (length != (n * 2 + 6) || n < 1 || n > MAX_COMPS_IN_SCAN)
+    ERREXIT(cinfo, JERR_BAD_LENGTH);
+
+  cinfo->comps_in_scan = n;
+
+  /* Collect the component-spec parameters */
+
+  for (i = 0; i < MAX_COMPS_IN_SCAN; i++)
+    cinfo->cur_comp_info[i] = NULL; // cinfo->cur_comp_info has length MAX_COMPS_IN_SCAN
+
+  for (i = 0; i < n; i++) {
+    INPUT_BYTE(cinfo, cc, return FALSE);
+    INPUT_BYTE(cinfo, c, return FALSE);
+    
+    for (ci = 0, compptr = cinfo->comp_info; ci < cinfo->num_components;
+	 ci++, compptr++) {
+      if (cc == compptr->component_id && !cinfo->cur_comp_info[ci]) // cinfo->cur_comp_info has length MAX_COMPS_IN_SCAN
+	goto id_found;
+    }
+
+    ERREXIT1(cinfo, JERR_BAD_COMPONENT_ID, cc);
+
+  id_found:
+
+    cinfo->cur_comp_info[i] = compptr;
+    compptr->dc_tbl_no = (c >> 4) & 15;
+    compptr->ac_tbl_no = (c     ) & 15;
+    
+    TRACEMS3(cinfo, 1, JTRC_SOS_COMPONENT, cc,
+	     compptr->dc_tbl_no, compptr->ac_tbl_no);
+  }
+
+  /* Collect the additional scan parameters Ss, Se, Ah/Al. */
+  INPUT_BYTE(cinfo, c, return FALSE);
+  cinfo->Ss = c;
+  INPUT_BYTE(cinfo, c, return FALSE);
+  cinfo->Se = c;
+  INPUT_BYTE(cinfo, c, return FALSE);
+  cinfo->Ah = (c >> 4) & 15;
+  cinfo->Al = (c     ) & 15;
+
+  TRACEMS4(cinfo, 1, JTRC_SOS_PARAMS, cinfo->Ss, cinfo->Se,
+	   cinfo->Ah, cinfo->Al);
+
+  /* Prepare to scan data & restart markers */
+  cinfo->marker->next_restart_num = 0;
+
+  /* Count another SOS marker */
+  cinfo->input_scan_number++;
+
+  INPUT_SYNC(cinfo);
+  return TRUE;
+}
+",CWE-787,['?']
+"static int
+JPEGSetupEncode(TIFF* tif)
+{
+	JPEGState* sp = JState(tif);
+	TIFFDirectory *td = &tif->tif_dir;
+	static const char module[] = ""JPEGSetupEncode"";
+
+#if defined(JPEG_DUAL_MODE_8_12) && !defined(TIFFInitJPEG)
+        if( tif->tif_dir.td_bitspersample == 12 )
+            return TIFFReInitJPEG_12( tif, COMPRESSION_JPEG, 1 );
+#endif
+
+        JPEGInitializeLibJPEG( tif, FALSE );
+
+	assert(sp != NULL);
+	assert(!sp->cinfo.comm.is_decompressor);
+
+	sp->photometric = td->td_photometric;
+
+	/*
+	 * Initialize all JPEG parameters to default values.
+	 * Note that jpeg_set_defaults needs legal values for
+	 * in_color_space and input_components.
+	 */
+	if (td->td_planarconfig == PLANARCONFIG_CONTIG) {
+		sp->cinfo.c.input_components = td->td_samplesperpixel;
+		if (sp->photometric == PHOTOMETRIC_YCBCR) {
+			if (sp->jpegcolormode == JPEGCOLORMODE_RGB) {
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			} else {
+				sp->cinfo.c.in_color_space = JCS_YCbCr;
+			}
+		} else {
+			if ((td->td_photometric == PHOTOMETRIC_MINISWHITE || td->td_photometric == PHOTOMETRIC_MINISBLACK) && td->td_samplesperpixel == 1)
+				sp->cinfo.c.in_color_space = JCS_GRAYSCALE;
+			else if (td->td_photometric == PHOTOMETRIC_RGB && td->td_samplesperpixel == 3)
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			else if (td->td_photometric == PHOTOMETRIC_SEPARATED && td->td_samplesperpixel == 4)
+				sp->cinfo.c.in_color_space = JCS_CMYK;
+			else
+				sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+		}
+	} else {
+		sp->cinfo.c.input_components = 1;
+		sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+	}
+	if (!TIFFjpeg_set_defaults(sp))
+		return (0);
+	/* Set per-file parameters */
+	switch (sp->photometric) {
+	case PHOTOMETRIC_YCBCR:
+		sp->h_sampling = td->td_ycbcrsubsampling[0];
+		sp->v_sampling = td->td_ycbcrsubsampling[1];
+                if( sp->h_sampling == 0 || sp->v_sampling == 0 )
+                {
+                    TIFFErrorExt(tif->tif_clientdata, module,
+                            ""Invalig horizontal/vertical sampling value"");
+                    return (0);
+                }
+
+		/*
+		 * A ReferenceBlackWhite field *must* be present since the
+		 * default value is inappropriate for YCbCr.  Fill in the
+		 * proper value if application didn't set it.
+		 */
+		{
+			float *ref;
+			if (!TIFFGetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					  &ref)) {
+				float refbw[6];
+				long top = 1L << td->td_bitspersample;
+				refbw[0] = 0;
+				refbw[1] = (float)(top-1L);
+				refbw[2] = (float)(top>>1);
+				refbw[3] = refbw[1];
+				refbw[4] = refbw[2];
+				refbw[5] = refbw[1];
+				TIFFSetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					     refbw);
+			}
+		}
+		break;
+	case PHOTOMETRIC_PALETTE:		/* disallowed by Tech Note */
+	case PHOTOMETRIC_MASK:
+		TIFFErrorExt(tif->tif_clientdata, module,
+			  ""PhotometricInterpretation %d not allowed for JPEG"",
+			  (int) sp->photometric);
+		return (0);
+	default:
+		/* TIFF 6.0 forbids subsampling of all other color spaces */
+		sp->h_sampling = 1;
+		sp->v_sampling = 1;
+		break;
+	}
+
+	/* Verify miscellaneous parameters */
+
+	/*
+	 * This would need work if libtiff ever supports different
+	 * depths for different components, or if libjpeg ever supports
+	 * run-time selection of depth.  Neither is imminent.
+	 */
+#ifdef JPEG_LIB_MK1
+        /* BITS_IN_JSAMPLE now permits 8 and 12 --- dgilbert */
+	if (td->td_bitspersample != 8 && td->td_bitspersample != 12) 
+#else
+	if (td->td_bitspersample != BITS_IN_JSAMPLE )
+#endif
+	{
+		TIFFErrorExt(tif->tif_clientdata, module, ""BitsPerSample %d not allowed for JPEG"",
+			  (int) td->td_bitspersample);
+		return (0);
+	}
+	sp->cinfo.c.data_precision = td->td_bitspersample;
+#ifdef JPEG_LIB_MK1
+        sp->cinfo.c.bits_in_jsample = td->td_bitspersample;
+#endif
+	if (isTiled(tif)) {
+		if ((td->td_tilelength % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile height must be multiple of %d"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+		if ((td->td_tilewidth % (sp->h_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile width must be multiple of %d"",
+				  sp->h_sampling * DCTSIZE);
+			return (0);
+		}
+	} else {
+		if (td->td_rowsperstrip < td->td_imagelength &&
+		    (td->td_rowsperstrip % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""RowsPerStrip must be multiple of %d for JPEG"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+	}
+
+	/* Create a JPEGTables field if appropriate */
+	if (sp->jpegtablesmode & (JPEGTABLESMODE_QUANT|JPEGTABLESMODE_HUFF)) {
+                if( sp->jpegtables == NULL
+                    || memcmp(sp->jpegtables,""\0\0\0\0\0\0\0\0\0"",8) == 0 )
+                {
+                        if (!prepare_JPEGTables(tif))
+                                return (0);
+                        /* Mark the field present */
+                        /* Can't use TIFFSetField since BEENWRITING is already set! */
+                        tif->tif_flags |= TIFF_DIRTYDIRECT;
+                        TIFFSetFieldBit(tif, FIELD_JPEGTABLES);
+                }
+	} else {
+		/* We do not support application-supplied JPEGTables, */
+		/* so mark the field not present */
+		TIFFClrFieldBit(tif, FIELD_JPEGTABLES);
+	}
+
+	/* Direct libjpeg output to libtiff's output buffer */
+	TIFFjpeg_data_dest(sp, tif);
+
+	return (1);
+}
+","static int
+JPEGSetupEncode(TIFF* tif)
+{
+	JPEGState* sp = JState(tif);
+	TIFFDirectory *td = &tif->tif_dir;
+	static const char module[] = ""JPEGSetupEncode"";
+
+#if defined(JPEG_DUAL_MODE_8_12) && !defined(TIFFInitJPEG)
+        if( tif->tif_dir.td_bitspersample == 12 )
+            return TIFFReInitJPEG_12( tif, COMPRESSION_JPEG, 1 );
+#endif
+
+        JPEGInitializeLibJPEG( tif, FALSE );
+
+	assert(sp != NULL);
+	assert(!sp->cinfo.comm.is_decompressor);
+
+	sp->photometric = td->td_photometric;
+
+	/*
+	 * Initialize all JPEG parameters to default values.
+	 * Note that jpeg_set_defaults needs legal values for
+	 * in_color_space and input_components.
+	 */
+	if (td->td_planarconfig == PLANARCONFIG_CONTIG) {
+		sp->cinfo.c.input_components = td->td_samplesperpixel;
+		if (sp->photometric == PHOTOMETRIC_YCBCR) {
+			if (sp->jpegcolormode == JPEGCOLORMODE_RGB) {
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			} else {
+				sp->cinfo.c.in_color_space = JCS_YCbCr;
+			}
+		} else {
+			if ((td->td_photometric == PHOTOMETRIC_MINISWHITE || td->td_photometric == PHOTOMETRIC_MINISBLACK) && td->td_samplesperpixel == 1)
+				sp->cinfo.c.in_color_space = JCS_GRAYSCALE;
+			else if (td->td_photometric == PHOTOMETRIC_RGB && td->td_samplesperpixel == 3)
+				sp->cinfo.c.in_color_space = JCS_RGB;
+			else if (td->td_photometric == PHOTOMETRIC_SEPARATED && td->td_samplesperpixel == 4)
+				sp->cinfo.c.in_color_space = JCS_CMYK;
+			else
+				sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+		}
+	} else {
+		sp->cinfo.c.input_components = 1;
+		sp->cinfo.c.in_color_space = JCS_UNKNOWN;
+	}
+	if (!TIFFjpeg_set_defaults(sp))
+		return (0);
+	/* Set per-file parameters */
+	switch (sp->photometric) {
+	case PHOTOMETRIC_YCBCR:
+		sp->h_sampling = td->td_ycbcrsubsampling[0];
+		sp->v_sampling = td->td_ycbcrsubsampling[1];
+                if( sp->h_sampling == 0 || sp->v_sampling == 0 )
+                {
+                    TIFFErrorExt(tif->tif_clientdata, module,
+                            ""Invalig horizontal/vertical sampling value"");
+                    return (0);
+                }
+		if( td->td_bitspersample > 16 )
+                {
+                    TIFFErrorExt(tif->tif_clientdata, module,
+                                 ""BitsPerSample %d not allowed for JPEG"",
+                                 td->td_bitspersample);
+                    return (0);
+                }
+
+		/*
+		 * A ReferenceBlackWhite field *must* be present since the
+		 * default value is inappropriate for YCbCr.  Fill in the
+		 * proper value if application didn't set it.
+		 */
+		{
+			float *ref;
+			if (!TIFFGetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					  &ref)) {
+				float refbw[6];
+				long top = 1L << td->td_bitspersample;
+				refbw[0] = 0;
+				refbw[1] = (float)(top-1L);
+				refbw[2] = (float)(top>>1);
+				refbw[3] = refbw[1];
+				refbw[4] = refbw[2];
+				refbw[5] = refbw[1];
+				TIFFSetField(tif, TIFFTAG_REFERENCEBLACKWHITE,
+					     refbw);
+			}
+		}
+		break;
+	case PHOTOMETRIC_PALETTE:		/* disallowed by Tech Note */
+	case PHOTOMETRIC_MASK:
+		TIFFErrorExt(tif->tif_clientdata, module,
+			  ""PhotometricInterpretation %d not allowed for JPEG"",
+			  (int) sp->photometric);
+		return (0);
+	default:
+		/* TIFF 6.0 forbids subsampling of all other color spaces */
+		sp->h_sampling = 1;
+		sp->v_sampling = 1;
+		break;
+	}
+
+	/* Verify miscellaneous parameters */
+
+	/*
+	 * This would need work if libtiff ever supports different
+	 * depths for different components, or if libjpeg ever supports
+	 * run-time selection of depth.  Neither is imminent.
+	 */
+#ifdef JPEG_LIB_MK1
+        /* BITS_IN_JSAMPLE now permits 8 and 12 --- dgilbert */
+	if (td->td_bitspersample != 8 && td->td_bitspersample != 12) 
+#else
+	if (td->td_bitspersample != BITS_IN_JSAMPLE )
+#endif
+	{
+		TIFFErrorExt(tif->tif_clientdata, module, ""BitsPerSample %d not allowed for JPEG"",
+			  (int) td->td_bitspersample);
+		return (0);
+	}
+	sp->cinfo.c.data_precision = td->td_bitspersample;
+#ifdef JPEG_LIB_MK1
+        sp->cinfo.c.bits_in_jsample = td->td_bitspersample;
+#endif
+	if (isTiled(tif)) {
+		if ((td->td_tilelength % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile height must be multiple of %d"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+		if ((td->td_tilewidth % (sp->h_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""JPEG tile width must be multiple of %d"",
+				  sp->h_sampling * DCTSIZE);
+			return (0);
+		}
+	} else {
+		if (td->td_rowsperstrip < td->td_imagelength &&
+		    (td->td_rowsperstrip % (sp->v_sampling * DCTSIZE)) != 0) {
+			TIFFErrorExt(tif->tif_clientdata, module,
+				  ""RowsPerStrip must be multiple of %d for JPEG"",
+				  sp->v_sampling * DCTSIZE);
+			return (0);
+		}
+	}
+
+	/* Create a JPEGTables field if appropriate */
+	if (sp->jpegtablesmode & (JPEGTABLESMODE_QUANT|JPEGTABLESMODE_HUFF)) {
+                if( sp->jpegtables == NULL
+                    || memcmp(sp->jpegtables,""\0\0\0\0\0\0\0\0\0"",8) == 0 )
+                {
+                        if (!prepare_JPEGTables(tif))
+                                return (0);
+                        /* Mark the field present */
+                        /* Can't use TIFFSetField since BEENWRITING is already set! */
+                        tif->tif_flags |= TIFF_DIRTYDIRECT;
+                        TIFFSetFieldBit(tif, FIELD_JPEGTABLES);
+                }
+	} else {
+		/* We do not support application-supplied JPEGTables, */
+		/* so mark the field not present */
+		TIFFClrFieldBit(tif, FIELD_JPEGTABLES);
+	}
+
+	/* Direct libjpeg output to libtiff's output buffer */
+	TIFFjpeg_data_dest(sp, tif);
+
+	return (1);
+}
+",CWE-190,"[71, 79]"

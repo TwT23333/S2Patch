@@ -1,0 +1,23 @@
+# Core dependencies for S2Patch.
+# NOTE: replace with exact pinned versions from your working environment
+# (`pip freeze`) before archiving the artifact.
+numpy
+scipy
+pandas
+scikit-learn
+networkx
+faiss-cpu
+openai
+torch
+transformers
+sentence-transformers
+grakel
+tqdm
+graphviz
+psutil
+pympler
+
+# Optional backends (install only if used):
+# vllm          # local open-source model serving (models/vLLM_API.py)
+# xinference    # embedding serving via Xinference
+# google-genai  # Gemini backend (models/Gemini.py)
